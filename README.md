@@ -1,3 +1,5 @@
+![Touchdown banner: live NFL scores and stats in your terminal](assets/banner.svg)
+
 # Touchdown
 
 **Live NFL scores and stats in your terminal.** Touchdown is a keyboard-driven dashboard built with Go, [Bubble Tea](https://github.com/charmbracelet/bubbletea), and [Lip Gloss](https://github.com/charmbracelet/lipgloss).
@@ -35,6 +37,16 @@ make build
 ```
 
 Touchdown opens on a home menu. Choose all games, live games, your favorite team, its season page, or AFC/NFC standings with the arrow keys and Enter. Green Bay (`GB`) is the default favorite until you choose another team.
+
+## Screenshots
+
+Captured from Touchdown with Week 7 of the 2026 season selected. Scores shown here are snapshots.
+
+[![Touchdown scores dashboard with live games, a Packers watch card, and NFC standings](assets/screenshots/dashboard.png)](assets/screenshots/dashboard.png)
+
+| Favorite-team season | Game center |
+| :---: | :---: |
+| [![Packers season schedule and team leaders](assets/screenshots/season.png)](assets/screenshots/season.png) | [![Completed game center with Packers and Vikings team stats](assets/screenshots/game-center.png)](assets/screenshots/game-center.png) |
 
 ## Controls
 

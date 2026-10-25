@@ -1,0 +1,51 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="300" viewBox="0 0 1200 300" role="img" aria-labelledby="title desc">
+  <title id="title">Touchdown</title>
+  <desc id="desc">Live NFL scores and stats in your terminal</desc>
+  <defs>
+    <linearGradient id="background" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#101c22"/>
+      <stop offset="1" stop-color="#0a1117"/>
+    </linearGradient>
+    <linearGradient id="accent" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0" stop-color="#79e4b7"/>
+      <stop offset="1" stop-color="#85bbd3"/>
+    </linearGradient>
+    <pattern id="grid" width="32" height="32" patternUnits="userSpaceOnUse">
+      <path d="M 32 0 L 0 0 0 32" fill="none" stroke="#36504d" stroke-opacity=".2" stroke-width="1"/>
+    </pattern>
+    <clipPath id="round">
+      <rect width="1200" height="300" rx="20"/>
+    </clipPath>
+  </defs>
+
+  <g clip-path="url(#round)">
+    <rect width="1200" height="300" fill="url(#background)"/>
+    <rect width="1200" height="300" fill="url(#grid)"/>
+    <path d="M 0 285 L 1200 285" stroke="url(#accent)" stroke-opacity=".6" stroke-width="2"/>
+    <path d="M 0 0 L 1200 0" stroke="#79e4b7" stroke-opacity=".3" stroke-width="2"/>
+    <rect x="0" y="0" width="8" height="300" fill="url(#accent)"/>
+
+    <g font-family="JetBrains Mono, DejaVu Sans Mono, monospace">
+      <text x="70" y="83" fill="#79e4b7" font-size="18" font-weight="700" letter-spacing="4">◆  NFL COMMAND CENTER</text>
+      <text x="65" y="178" fill="#f0fff9" font-size="73" font-weight="800" letter-spacing="-5">TOUCH</text>
+      <text x="280" y="178" fill="#79e4b7" font-size="73" font-weight="800" letter-spacing="-5">DOWN</text>
+      <path d="M 70 199 H 674" stroke="url(#accent)" stroke-width="2" stroke-opacity=".65"/>
+      <text x="70" y="239" fill="#b7c8c8" font-size="19" letter-spacing="1">LIVE SCORES. STATS. YOUR TEAM.</text>
+    </g>
+
+    <g transform="translate(764 50)">
+      <rect width="370" height="204" rx="12" fill="#111f24" stroke="#47615c" stroke-width="2"/>
+      <path d="M 0 40 H 370" stroke="#47615c"/>
+      <circle cx="23" cy="20" r="5" fill="#ff6961"/>
+      <circle cx="43" cy="20" r="5" fill="#f8c474"/>
+      <circle cx="63" cy="20" r="5" fill="#79e4b7"/>
+      <text x="338" y="25" text-anchor="end" fill="#88959b" font-family="JetBrains Mono, DejaVu Sans Mono, monospace" font-size="13">touchdown</text>
+      <text x="23" y="80" fill="#79e4b7" font-family="JetBrains Mono, DejaVu Sans Mono, monospace" font-size="19" font-weight="700">❯ td</text>
+      <rect x="23" y="99" width="324" height="81" rx="6" fill="#172d2d" stroke="#315a50"/>
+      <path d="M 39 123 H 331 M 39 157 H 331" stroke="#79e4b7" stroke-opacity=".22" stroke-dasharray="5 9"/>
+      <path d="M 89 108 V 171 M 137 108 V 171 M 185 108 V 171 M 233 108 V 171 M 281 108 V 171" stroke="#79e4b7" stroke-opacity=".2"/>
+      <path d="M 155 130 C 165 114 205 114 215 130 C 205 146 165 146 155 130 Z" fill="#79e4b7"/>
+      <path d="M 180 122 L 180 138 M 185 121 L 185 139 M 190 122 L 190 138" stroke="#172d2d" stroke-width="2"/>
+    </g>
+  </g>
+</svg>
