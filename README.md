@@ -36,6 +36,10 @@ make build
 ./bin/touchdown
 ```
 
+### Prebuilt binaries
+
+Download a Linux, macOS, or Windows archive from the [latest release](https://github.com/Commanderx-code/touchdown-cli/releases/latest). Extract it and put `touchdown` (or `touchdown.exe` on Windows) somewhere on your `PATH`. The release also includes a SHA-256 checksum file so you can verify your download.
+
 Touchdown opens on a home menu. Choose all games, live games, your favorite team, its season page, or AFC/NFC standings with the arrow keys and Enter. Green Bay (`GB`) is the default favorite until you choose another team.
 
 ## Screenshots
@@ -122,3 +126,7 @@ go vet ./...
 ```
 
 Touchdown is an original Go implementation inspired by [kickoff-cli](https://github.com/e12jassir/kickoff-cli).
+
+## License
+
+[MIT](LICENSE) © 2026 Commanderx-code.
