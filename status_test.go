@@ -144,7 +144,7 @@ func TestRunStatusOnceReadsCacheWithoutNetwork(t *testing.T) {
 	}
 	spawned := captureSpawns(t)
 	var out strings.Builder
-	code := runStatusOnce(dir, "GB", 0, 0, 2, time.Now(), "/bin/td", []string{"-favorite=GB"}, &out)
+	code := runStatusOnce(dir, "GB", 0, 0, 2, time.Now(), "/bin/td", []string{"-favorite=GB"}, &out, false)
 	if code != 0 || out.String() != "GB 27-19 CAR · Q4 2:14 · BALL\n" {
 		t.Fatalf("code %d out %q", code, out.String())
 	}
@@ -164,14 +164,14 @@ func TestRunStatusOnceSpawnsRefreshWhenStale(t *testing.T) {
 	}
 	spawned := captureSpawns(t)
 	var out strings.Builder
-	if code := runStatusOnce(dir, "GB", 0, 0, 2, time.Now(), "/bin/td", []string{"-favorite=GB"}, &out); code != 0 {
+	if code := runStatusOnce(dir, "GB", 0, 0, 2, time.Now(), "/bin/td", []string{"-favorite=GB"}, &out, false); code != 0 {
 		t.Fatal(code)
 	}
 	want := []string{"/bin/td", "-status", "-refresh", "-favorite=GB"}
 	if out.String() != "GB 27-19 CAR · Q4 2:14 · BALL\n" || len(*spawned) != 1 || !reflect.DeepEqual((*spawned)[0], want) {
 		t.Fatalf("out %q spawned %v", out.String(), *spawned)
 	}
-	runStatusOnce(dir, "GB", 0, 0, 2, time.Now(), "/bin/td", nil, &out)
+	runStatusOnce(dir, "GB", 0, 0, 2, time.Now(), "/bin/td", nil, &out, false)
 	if len(*spawned) != 1 {
 		t.Fatalf("marker must throttle the second spawn: %v", *spawned)
 	}
@@ -181,7 +181,7 @@ func TestRunStatusOnceNoCache(t *testing.T) {
 	for _, dir := range []string{t.TempDir(), filepath.Join(t.TempDir(), "nested")} {
 		spawned := captureSpawns(t)
 		var out strings.Builder
-		if code := runStatusOnce(dir, "GB", 0, 0, 2, time.Now(), "/bin/td", nil, &out); code != 0 || out.String() != "" {
+		if code := runStatusOnce(dir, "GB", 0, 0, 2, time.Now(), "/bin/td", nil, &out, false); code != 0 || out.String() != "" {
 			t.Fatalf("code %d out %q", code, out.String())
 		}
 		if len(*spawned) != 1 {
@@ -200,7 +200,7 @@ func TestRunStatusOnceCorruptCache(t *testing.T) {
 	}
 	spawned := captureSpawns(t)
 	var out strings.Builder
-	if code := runStatusOnce(dir, "GB", 0, 0, 2, time.Now(), "/bin/td", nil, &out); code != 0 || out.String() != "" || len(*spawned) != 1 {
+	if code := runStatusOnce(dir, "GB", 0, 0, 2, time.Now(), "/bin/td", nil, &out, false); code != 0 || out.String() != "" || len(*spawned) != 1 {
 		t.Fatalf("code %d out %q spawned %v", code, out.String(), *spawned)
 	}
 }
@@ -455,5 +455,29 @@ func TestForwardedFlagsMakesConfigAbsolute(t *testing.T) {
 	}
 	if got != want {
 		t.Fatalf("config forwarded as %q, want %q", got, want)
+	}
+}
+
+func TestRunStatusOnceLiveOnlyHidesGamesNotInProgress(t *testing.T) {
+	dir := t.TempDir()
+	if err := writeCached(dir, scoreboardURL(0, 0, 2), []byte(liveBoardJSON)); err != nil {
+		t.Fatal(err)
+	}
+	captureSpawns(t)
+	var out strings.Builder
+	if code := runStatusOnce(dir, "GB", 0, 0, 2, time.Now(), "/bin/td", nil, &out, true); code != 0 || out.String() != "GB 27-19 CAR · Q4 2:14 · BALL\n" {
+		t.Fatalf("live game must print: code %d out %q", code, out.String())
+	}
+	final := strings.Replace(liveBoardJSON, `"state":"in"`, `"state":"post"`, 1)
+	if err := writeCached(dir, scoreboardURL(0, 0, 2), []byte(final)); err != nil {
+		t.Fatal(err)
+	}
+	out.Reset()
+	if code := runStatusOnce(dir, "GB", 0, 0, 2, time.Now(), "/bin/td", nil, &out, true); code != 0 || out.String() != "" {
+		t.Fatalf("final must print nothing with -live: code %d out %q", code, out.String())
+	}
+	out.Reset()
+	if code := runStatusOnce(dir, "GB", 0, 0, 2, time.Now(), "/bin/td", nil, &out, false); code != 0 || !strings.HasPrefix(out.String(), "GB W 27-19 CAR · Final") {
+		t.Fatalf("final must still print without -live: code %d out %q", code, out.String())
 	}
 }

@@ -91,10 +91,13 @@ func forwardedFlags(fs *flag.FlagSet) []string {
 
 // runStatusOnce prints the prompt status line from the cache and, when the
 // cache is stale, hands fetching to a detached refresh child.
-func runStatusOnce(cacheDir, favorite string, season, week, seasonType int, now time.Time, self string, forwarded []string, out io.Writer) int {
+// liveOnly prints the line only while the favorite's game is in progress,
+// so a prompt segment appears during games and disappears otherwise.
+func runStatusOnce(cacheDir, favorite string, season, week, seasonType int, now time.Time, self string, forwarded []string, out io.Writer, liveOnly bool) int {
 	board, cachedAt, ok := cachedScoreboard(cacheDir, season, week, seasonType)
 	if ok {
-		if line := statusLine(board, favorite, now, cachedAt); line != "" {
+		g, found := favoriteGame(board, favorite)
+		if line := statusLine(board, favorite, now, cachedAt); line != "" && (!liveOnly || found && g.Status.Type.State == "in") {
 			fmt.Fprintln(out, line)
 		}
 	}
