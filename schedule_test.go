@@ -203,3 +203,75 @@ func TestPickerEscReturnsToOrigin(t *testing.T) {
 		t.Fatal("esc on the picker must then return to the dashboard")
 	}
 }
+
+func slotBoard(t *testing.T) scoreboard {
+	t.Helper()
+	game := func(id, date, away, home string) string {
+		return `{"id":"` + id + `","date":"` + date + `","status":{"type":{"state":"pre"}},"competitions":[{"competitors":[{"homeAway":"away","team":{"abbreviation":"` + away + `","displayName":"` + away + `"}},{"homeAway":"home","team":{"abbreviation":"` + home + `","displayName":"` + home + `"}}]}]}`
+	}
+	raw := `{"week":{"number":9},"events":[` + strings.Join([]string{
+		game("1", "2026-11-06T01:15Z", "LV", "DEN"),
+		game("2", "2026-11-08T18:00Z", "NO", "CAR"),
+		game("3", "2026-11-08T18:00Z", "NYG", "CHI"),
+		game("4", "2026-11-08T18:01Z", "JAX", "HOU"),
+		game("5", "2026-11-10T01:15Z", "PHI", "GB"),
+		game("6", "", "ARI", "SEA"),
+	}, ",") + `]}`
+	var b scoreboard
+	if err := json.Unmarshal([]byte(raw), &b); err != nil {
+		t.Fatal(err)
+	}
+	return b
+}
+
+func headerLines(view, slot string) int {
+	n := 0
+	for _, line := range strings.Split(view, "\n") {
+		if strings.Contains(line, slot) && !strings.Contains(line, "UPCOMING") && !strings.Contains(line, "EST") {
+			n++
+		}
+	}
+	return n
+}
+
+func TestDashboardGroupsBySlot(t *testing.T) {
+	loc, err := time.LoadLocation("America/New_York")
+	if err != nil {
+		t.Skip(err)
+	}
+	saved := time.Local
+	time.Local = loc
+	defer func() { time.Local = saved }()
+	m := model{board: slotBoard(t), season: 2026, week: 9, seasonType: 2, favorite: "GB", width: 100, height: 36}
+	view := m.View()
+	last := -1
+	for _, slot := range []string{"THU 8:15 PM", "SUN 1:00 PM", "SUN 1:01 PM", "MON 8:15 PM", "TBD"} {
+		if headerLines(view, slot) != 1 {
+			t.Fatalf("want exactly one %q header, got %d\n%s", slot, headerLines(view, slot), view)
+		}
+		at := -1
+		for i, line := range strings.Split(view, "\n") {
+			if strings.Contains(line, slot) && !strings.Contains(line, "UPCOMING") && !strings.Contains(line, "EST") {
+				at = i
+			}
+		}
+		if at < last {
+			t.Fatalf("%q header out of order (line %d after %d)", slot, at, last)
+		}
+		last = at
+	}
+	for _, size := range []struct{ width, height int }{{100, 30}, {80, 24}} {
+		m.width, m.height = size.width, size.height
+		if lines := strings.Count(m.View(), "\n") + 1; lines > size.height {
+			t.Errorf("%dx%d dashboard with slot headers has %d lines", size.width, size.height, lines)
+		}
+	}
+	m.width, m.height = 100, 23
+	if headerLines(m.View(), "SUN 1:00 PM") != 0 {
+		t.Fatal("no slot headers below 24 rows")
+	}
+	m.height, m.favoritesOnly = 30, true
+	if headerLines(m.View(), "MON 8:15 PM") != 0 {
+		t.Fatal("no slot headers in the favorite filter")
+	}
+}
