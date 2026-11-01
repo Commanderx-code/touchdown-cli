@@ -11,8 +11,12 @@ import (
 
 // openPicker shows the team picker with the favorite preselected.
 func (m model) openPicker() model {
+	origin := "dashboard"
+	if m.showHome {
+		origin = "home"
+	}
+	m = m.consumeOverview().push(backTarget{Screen: origin})
 	m.showPicker = true
-	m.pickerFromHome = m.showHome
 	m.showHome = false
 	m.pickerBuffer = ""
 	m.pickerIndex = 0
@@ -57,9 +61,9 @@ func (m model) updatePickerKey(key string, now time.Time) (model, tea.Cmd) {
 		m.pickerIndex = len(nflTeams) - 1
 	case "enter":
 		m.showPicker = false
-		return m.openTeamSeason(nflTeams[m.pickerIndex].abbreviation)
+		return m.push(backTarget{Screen: "picker"}).openTeamSeason(nflTeams[m.pickerIndex].abbreviation)
 	case "esc", "backspace":
-		return m.leavePicker()
+		return m.back()
 	default:
 		if len(key) == 1 && unicode.IsLetter(rune(key[0])) {
 			if now.Sub(m.pickerTyped) > time.Second {
@@ -85,15 +89,6 @@ func (m model) updatePickerKey(key string, now time.Time) (model, tea.Cmd) {
 	}
 	if m.pickerIndex >= m.pickerScroll+page {
 		m.pickerScroll = m.pickerIndex - page + 1
-	}
-	return m, nil
-}
-
-// leavePicker closes the picker and returns to where it was opened from.
-func (m model) leavePicker() (model, tea.Cmd) {
-	m.showPicker = false
-	if m.pickerFromHome {
-		m.showHome = true
 	}
 	return m, nil
 }

@@ -140,3 +140,66 @@ func TestPickerTypeToJumpAndEnter(t *testing.T) {
 		t.Fatalf("enter: showTeam %v viewTeam %q showPicker %v", m.showTeam, m.viewTeam, m.showPicker)
 	}
 }
+
+func TestOpponentJumpAndEscWalksBack(t *testing.T) {
+	m := favoriteSeasonModel(t)
+	m.showTeam = true
+	m.teamSelected = 0 // W1 @ MIN
+	m = key(m, "t")
+	if !m.showTeam || m.viewTeam != "MIN" {
+		t.Fatalf("t on GB's page: showTeam %v viewTeam %q, want MIN", m.showTeam, m.viewTeam)
+	}
+	m, _ = m.applyViewSchedule(teamScheduleMsg{team: "MIN", data: decodeSchedule(t, "MIN")})
+	m.teamSelected = 1 // W14 vs DET
+	m = key(m, "t")
+	if m.viewTeam != "DET" {
+		t.Fatalf("t on MIN's page: viewTeam %q, want DET", m.viewTeam)
+	}
+	m = key(m, "esc")
+	if !m.showTeam || m.viewTeam != "MIN" {
+		t.Fatalf("first esc: showTeam %v viewTeam %q, want MIN", m.showTeam, m.viewTeam)
+	}
+	m = key(m, "esc")
+	if !m.showTeam || !m.showingFavorite() {
+		t.Fatalf("second esc: showTeam %v viewTeam %q, want favorite", m.showTeam, m.viewTeam)
+	}
+	m = key(m, "esc")
+	if m.showTeam || m.showPicker {
+		t.Fatalf("third esc must leave the season page: showTeam %v showPicker %v", m.showTeam, m.showPicker)
+	}
+}
+
+func TestOpponentJumpIgnoresEmptySelection(t *testing.T) {
+	m := model{favorite: "GB", season: 2026, teamSeason: 2026, showTeam: true, width: 80, height: 24}
+	m = key(m, "t")
+	if !m.showTeam || m.viewTeam != "" || m.showPicker {
+		t.Fatalf("t with no games must be a no-op: showTeam %v viewTeam %q showPicker %v", m.showTeam, m.viewTeam, m.showPicker)
+	}
+}
+
+func TestPickerEscReturnsToOrigin(t *testing.T) {
+	m := dashboardModel(t)
+	m = key(key(m, "t"), "esc")
+	if m.showPicker || m.showHome {
+		t.Fatalf("dashboard → t → esc must return to the dashboard: showPicker %v showHome %v", m.showPicker, m.showHome)
+	}
+	m = dashboardModel(t)
+	m.showHome, m.homeSelection = true, 6
+	m = key(key(m, "enter"), "esc")
+	if m.showPicker || !m.showHome {
+		t.Fatalf("home → picker → esc must return home: showPicker %v showHome %v", m.showPicker, m.showHome)
+	}
+	m = dashboardModel(t)
+	m = key(key(m, "t"), "enter") // favorite preselected
+	if !m.showTeam || m.showPicker {
+		t.Fatalf("picker → enter must open the season page: showTeam %v showPicker %v", m.showTeam, m.showPicker)
+	}
+	m = key(m, "esc")
+	if !m.showPicker {
+		t.Fatal("esc on a season page opened from the picker must return to the picker")
+	}
+	m = key(m, "esc")
+	if m.showPicker || m.showHome || m.showTeam {
+		t.Fatal("esc on the picker must then return to the dashboard")
+	}
+}
