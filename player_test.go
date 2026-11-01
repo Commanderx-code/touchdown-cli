@@ -3,9 +3,12 @@ package main
 import (
 	"context"
 	"errors"
+	"io"
 	"net/http"
 	"strings"
 	"testing"
+
+	tea "github.com/charmbracelet/bubbletea"
 )
 
 const injuriesJSON = `{"injuries":[
@@ -180,5 +183,142 @@ func TestRosterAndPlayerStores(t *testing.T) {
 	m = m.applyPlayer(playerMsg{id: "x", err: errors.New("bad")})
 	if entry, _ := m.playerFor("x"); entry.Error != "bad" {
 		t.Fatalf("player error: %+v", entry)
+	}
+}
+
+// teamDataClient serves schedules, rosters and injury reports for any team.
+func teamDataClient(t *testing.T, seen *[]string) *client {
+	t.Helper()
+	return &client{http: &http.Client{Transport: roundTripFunc(func(req *http.Request) (*http.Response, error) {
+		if seen != nil {
+			*seen = append(*seen, req.URL.Path+"?"+req.URL.RawQuery)
+		}
+		body := `{}`
+		switch {
+		case strings.HasSuffix(req.URL.Path, "/roster"):
+			body = rosterJSON
+		case strings.HasSuffix(req.URL.Path, "/injuries"):
+			body = injuriesJSON
+		case strings.HasSuffix(req.URL.Path, "/overview"):
+			body = overviewJSON
+		case strings.HasSuffix(req.URL.Path, "/schedule"):
+			parts := strings.Split(req.URL.Path, "/")
+			body = scheduleJSON(strings.ToUpper(parts[len(parts)-2]))
+		}
+		return &http.Response{StatusCode: 200, Body: io.NopCloser(strings.NewReader(body)), Header: make(http.Header)}, nil
+	})}}
+}
+
+func seasonTabsModel(t *testing.T, seen *[]string) model {
+	t.Helper()
+	m := favoriteSeasonModel(t)
+	m.api = teamDataClient(t, seen)
+	m.showTeam = true
+	m.width, m.height = 100, 24
+	return m
+}
+
+// press sends a key and runs its command tree back through Update.
+func press(t *testing.T, m model, name string) model {
+	t.Helper()
+	msg := tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune(name)}
+	switch name {
+	case "enter":
+		msg = tea.KeyMsg{Type: tea.KeyEnter}
+	case "esc":
+		msg = tea.KeyMsg{Type: tea.KeyEsc}
+	case "tab":
+		msg = tea.KeyMsg{Type: tea.KeyTab}
+	case "down":
+		msg = tea.KeyMsg{Type: tea.KeyDown}
+	case "up":
+		msg = tea.KeyMsg{Type: tea.KeyUp}
+	}
+	next, cmd := m.Update(msg)
+	m = next.(model)
+	for _, reply := range runCmds(cmd) {
+		next, _ = m.Update(reply)
+		m = next.(model)
+	}
+	return m
+}
+
+func TestSeasonPageTabsLoadLazilyAndRender(t *testing.T) {
+	var seen []string
+	m := seasonTabsModel(t, &seen)
+	if view := m.View(); !strings.Contains(view, "[ 1 SCHEDULE ]") || !strings.Contains(view, "2 ROSTER") {
+		t.Fatalf("tab line missing:\n%s", view)
+	}
+	m = press(t, m, "2")
+	rosterRequests := 0
+	for _, u := range seen {
+		if strings.Contains(u, "/roster") {
+			rosterRequests++
+		}
+	}
+	if rosterRequests != 1 || m.teamTab != 1 {
+		t.Fatalf("roster tab: requests %d tab %d", rosterRequests, m.teamTab)
+	}
+	view := m.View()
+	for _, want := range []string{"[ 2 ROSTER ]", "OFFENSE", "#10  QB   Jordan Love", "IR / OUT", "#--", "Utah State", "6 yrs"} {
+		if !strings.Contains(view, want) {
+			t.Fatalf("roster view missing %q:\n%s", want, view)
+		}
+	}
+	m = press(t, m, "3")
+	view = m.View()
+	for _, want := range []string{"[ 3 INJURIES ]", "INJURY REPORT  ·  1 OUT · 1 Q · 1 IR", "OUT   DE   Micah Parsons", "Knee - ACL", "back Nov 25", "Targeting Week 12."} {
+		if !strings.Contains(view, want) {
+			t.Fatalf("injury view missing %q:\n%s", want, view)
+		}
+	}
+	m = press(t, m, "tab")
+	if m.teamTab != 0 {
+		t.Fatalf("tab wraps to schedule, got %d", m.teamTab)
+	}
+	for tab := 0; tab < 3; tab++ {
+		m.teamTab = tab
+		if lines := strings.Count(m.View(), "\n") + 1; lines > m.height {
+			t.Errorf("tab %d has %d lines at height %d", tab, lines, m.height)
+		}
+	}
+}
+
+func TestSeasonPageTabSelectionAndRefresh(t *testing.T) {
+	var seen []string
+	m := seasonTabsModel(t, &seen)
+	m = press(t, press(t, m, "2"), "down")
+	if m.rosterSelected != 1 || m.rosterSelectedLine() != 2 {
+		t.Fatalf("roster selection %d line %d", m.rosterSelected, m.rosterSelectedLine())
+	}
+	seen = nil
+	m = press(t, m, "r")
+	if len(seen) != 1 || !strings.Contains(seen[0], "/roster") {
+		t.Fatalf("r on the roster tab must refetch the roster only: %v", seen)
+	}
+	m = press(t, m, "3")
+	seen = nil
+	m = press(t, m, "r")
+	if len(seen) != 1 || !strings.Contains(seen[0], "/injuries") {
+		t.Fatalf("r on the injuries tab must refetch injuries only: %v", seen)
+	}
+	m, _ = m.openTeamSeason("DET")
+	if m.teamTab != 0 || m.rosterSelected != 0 || m.injurySelected != 0 {
+		t.Fatalf("opening another team must reset tabs: tab %d roster %d injury %d", m.teamTab, m.rosterSelected, m.injurySelected)
+	}
+}
+
+func TestInFlightReplyForAnotherTeamIsStoredNotShown(t *testing.T) {
+	m := seasonTabsModel(t, nil)
+	m, _ = m.setTeamTab(1) // GB roster in flight
+	m, _ = m.openTeamSeason("DET")
+	m, _ = m.setTeamTab(1) // DET roster in flight
+	next, _ := m.Update(rosterMsg{team: "GB", data: roster{Team: "GB", Groups: []rosterGroup{{Title: "OFFENSE", Players: []rosterPlayer{{Name: "Jordan Love"}}}}}})
+	m = next.(model)
+	if entry, ok := m.rosterFor("GB"); !ok || entry.Loading || len(entry.Data.Groups) != 1 {
+		t.Fatalf("GB reply must be stored: %+v", entry)
+	}
+	if view := m.View(); !strings.Contains(view, "Loading roster…") || strings.Contains(view, "Jordan Love") {
+		t.Fatalf("DET page must still be loading:\n%s", view)
 	}
 }

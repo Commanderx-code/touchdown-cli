@@ -117,6 +117,11 @@ type model struct {
 	overviewSeason           int
 	overviewFavorite         string
 	injuryReports            map[string]injuryEntry
+	teamTab                  int
+	rosterSelected           int
+	rosterScroll             int
+	injurySelected           int
+	injuryScroll             int
 	rosters                  map[string]rosterEntry
 	players                  map[string]playerEntry
 	history                  []backTarget
@@ -182,6 +187,7 @@ func (m model) openFavoriteSeason(notice string) (model, tea.Cmd) {
 	m.showTeam = true
 	m.showDetail = false
 	m.showStandings = false
+	m = m.resetTeamTabs()
 	m.teamScroll = 0
 	m.teamSelected = 0
 	m.teamNotice = notice
@@ -257,6 +263,8 @@ func (m model) scrollBy(delta int) model {
 		m.homeSelection = max(0, min(m.homeSelection+delta, len(m.homeOptions())-1))
 	case m.showStandings:
 		m.standingsScroll = max(0, min(m.standingsScroll+delta, m.maxStandingsScroll()))
+	case m.showTeam && m.teamTab != tabSchedule:
+		m = m.moveTabSelection(delta)
 	case m.showTeam:
 		events := m.activeTeamPage().Data.Events
 		if len(events) == 0 {
@@ -621,6 +629,9 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.showHome = true
 			}
 		case "r":
+			if m.showTeam && m.teamTab != tabSchedule {
+				return m.refreshTeamTab()
+			}
 			m.loading = true
 			if m.showTeam && !m.showingFavorite() {
 				m.view.Loading = true
@@ -648,7 +659,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				next, cmd := m.openHomeSelection()
 				return next, cmd
 			}
-			if page := m.activeTeamPage(); m.showTeam && page.Season == m.season && len(page.Data.Events) > 0 {
+			if page := m.activeTeamPage(); m.showTeam && m.teamTab == tabSchedule && page.Season == m.season && len(page.Data.Events) > 0 {
 				event := page.Data.Events[min(m.teamSelected, len(page.Data.Events)-1)]
 				m.detailID = event.ID
 				m.detailGame = event.toGame()
@@ -696,6 +707,18 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 					m.detailTab = 3
 				}
 				m.detailScroll = 0
+			}
+			if m.showTeam {
+				switch msg.String() {
+				case "tab":
+					return m.setTeamTab((m.teamTab + 1) % 3)
+				case "1":
+					return m.setTeamTab(tabSchedule)
+				case "2":
+					return m.setTeamTab(tabRoster)
+				case "3":
+					return m.setTeamTab(tabInjuries)
+				}
 			}
 		case "left", "h", "right", "l":
 			if m.showHome {
@@ -807,6 +830,7 @@ func (m model) openHomeSelection() (model, tea.Cmd) {
 		m.favoritesOnly, m.liveOnly = true, false
 	case 3:
 		m.viewTeam = ""
+		m = m.resetTeamTabs()
 		m.showTeam = true
 		m.teamFromHome = true
 		m.teamScroll = 0
