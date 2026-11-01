@@ -73,6 +73,7 @@ type gameSituation struct {
 	Possession string `json:"possession"`
 	Down       int    `json:"down"`
 	Distance   int    `json:"distance"`
+	IsRedZone  bool   `json:"isRedZone"`
 	LastPlay   struct {
 		Text string `json:"text"`
 	} `json:"lastPlay"`
@@ -88,23 +89,22 @@ func (g game) dateTime() time.Time {
 }
 
 type gameStatus struct {
-	Type struct {
-		State       string `json:"state"`
-		ShortDetail string `json:"shortDetail"`
-		Description string `json:"description"`
-	} `json:"type"`
+	Type         statusType `json:"type"`
+	DisplayClock string     `json:"displayClock"`
+	Period       int        `json:"period"`
+}
+
+type statusType struct {
+	State       string `json:"state"`
+	ShortDetail string `json:"shortDetail"`
+	Description string `json:"description"`
 }
 
 type competitor struct {
-	HomeAway string `json:"homeAway"`
-	Score    string `json:"score"`
-	Team     struct {
-		ID           string `json:"id"`
-		DisplayName  string `json:"displayName"`
-		Abbreviation string `json:"abbreviation"`
-		Name         string `json:"name"`
-	} `json:"team"`
-	Records []struct {
+	HomeAway string  `json:"homeAway"`
+	Score    string  `json:"score"`
+	Team     teamRef `json:"team"`
+	Records  []struct {
 		Name    string `json:"name"`
 		Summary string `json:"summary"`
 	} `json:"records"`
@@ -294,6 +294,13 @@ type standingGroup struct {
 	Standings    struct {
 		Entries []standingEntry `json:"entries"`
 	} `json:"standings"`
+}
+
+type teamRef struct {
+	ID           string `json:"id"`
+	DisplayName  string `json:"displayName"`
+	Abbreviation string `json:"abbreviation"`
+	Name         string `json:"name"`
 }
 
 type standingEntry struct {
