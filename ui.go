@@ -70,22 +70,22 @@ func (m model) View() string {
 	} else {
 		panel = m.renderBoard(inner)
 	}
-	footer := fmt.Sprintf("↑/↓ games  ·  Enter details  ·  g %s  ·  p season  ·  c settings  ·  ? help  ·  f filter  ·  s standings  ·  Esc menu  ·  q quit", m.favorite)
+	footer := fmt.Sprintf("↑/↓ games  ·  Enter details  ·  g %s  ·  p season  ·  t teams  ·  c settings  ·  ? help  ·  f filter  ·  s standings  ·  Esc menu  ·  q quit", m.favorite)
 	if m.showStandings {
 		footer = "←/→ conference  ·  ↑/↓, PgUp/PgDn, wheel scroll  ·  Esc back  ·  q quit"
 	} else if m.showTeam {
-		footer = "↑/↓ select game  ·  Enter open  ·  Esc back  ·  r refresh  ·  q quit"
+		footer = "↑/↓ select game  ·  Enter open  ·  t opponent  ·  Esc back  ·  r refresh  ·  q quit"
 	} else if m.showDetail {
 		footer = "1/2/3/4 tabs  ·  ↑/↓ scroll  ·  Esc back  ·  r refresh  ·  q quit"
 	}
 	if width < 100 && !m.showStandings && !m.showDetail && !m.showTeam {
-		footer = fmt.Sprintf("↑/↓ · Enter · g %s · p season · c settings · ? help · s standings · q", m.favorite)
+		footer = fmt.Sprintf("↑/↓ · Enter · g %s · p season · t teams · c settings · ? help · q", m.favorite)
 	}
 	if width < 68 {
 		if m.showStandings {
 			footer = "←/→ AFC/NFC · ↑/↓/wheel · Esc · q"
 		} else if m.showTeam {
-			footer = "↑/↓ game · Enter open · Esc · q"
+			footer = "↑/↓ game · Enter · t opponent · Esc · q"
 		} else if m.showDetail {
 			footer = "1/2/3/4 tabs · ↑/↓ scroll · Esc back · q"
 		} else {
