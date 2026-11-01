@@ -103,7 +103,7 @@ func (m model) gameInjuryLines(g game) []string {
 	away, home := g.sides()
 	for _, side := range []competitor{away, home} {
 		team := side.Team.Abbreviation
-		lines = append(lines, accentStyle.Render(team))
+		lines = append(lines, accentStyle.Render(plainText(team)))
 		entry, ok := m.injuriesFor(team)
 		switch {
 		case !ok || entry.Loading && entry.Report.Team == "":

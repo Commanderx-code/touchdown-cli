@@ -83,12 +83,27 @@ func (m model) teamTabScroll() int {
 	return m.teamScroll
 }
 
+// teamRowWidth is the width rows are built to: the panel's inner width, so
+// badges and wrapped comments are never clipped by the frame.
 func (m model) teamRowWidth() int {
 	width := m.width
 	if width <= 0 {
 		width = 100
 	}
-	return max(30, min(96, width-8))
+	if m.compact || m.height > 0 && m.height < 16 {
+		return max(24, width-2)
+	}
+	return panelInner(width)
+}
+
+// rosterIndex and injuryIndex are the selections clamped to the rows that
+// exist, so a shorter refresh never leaves the cursor past the end.
+func (m model) rosterIndex() int {
+	return max(0, min(m.rosterSelected, len(m.rosterRows())-1))
+}
+
+func (m model) injuryIndex() int {
+	return max(0, min(m.injurySelected, len(m.injuryRows())-1))
 }
 
 // rosterRows is every selectable player in render order.
@@ -123,7 +138,7 @@ func (m model) rosterRender() ([]string, []int) {
 		lines = append(lines, sectionStyle.Render(group.Title))
 		for _, p := range group.Players {
 			row := rosterRow(p, width)
-			if index == m.rosterSelected {
+			if index == m.rosterIndex() {
 				row = selectedStyle.Render(padLine(row, width))
 			} else {
 				row = textStyle.Render(row)
@@ -144,9 +159,10 @@ func rosterRow(p rosterPlayer, width int) string {
 	if p.Age > 0 {
 		age = fmt.Sprint(p.Age)
 	}
-	row := fmt.Sprintf("#%-3s %-4s %-24s %2s  %-6s %-8s %-7s %s", p.Jersey, p.Position, clipText(p.Name, 24), age, p.Height, p.Weight, experienceLabel(p), p.College)
-	if width < 80 {
-		row = fmt.Sprintf("#%-3s %-4s %-24s %2s  %-7s", p.Jersey, p.Position, clipText(p.Name, 24), age, experienceLabel(p))
+	// Wide: #10  QB   Jordan Love         27  6' 4"  219 lbs  6 yrs   Utah State    OUT (74 columns).
+	row := fmt.Sprintf("#%-3s %-4s %-18s %2s  %-5s  %-7s  %-6s  %-12s", p.Jersey, p.Position, clipText(p.Name, 18), age, p.Height, p.Weight, experienceLabel(p), clipText(p.College, 12))
+	if width < 74 {
+		row = fmt.Sprintf("#%-3s %-4s %-20s %2s  %-6s", p.Jersey, p.Position, clipText(p.Name, 20), age, experienceLabel(p))
 	}
 	row = strings.TrimRight(row, " ")
 	if badge := rosterBadge(p); badge != "" {
@@ -206,7 +222,7 @@ func (m model) injuryRender() ([]string, []int) {
 	var rowLines []int
 	for i, row := range entry.Report.Entries {
 		text := clipText(injuryRow(row), width)
-		if i == m.injurySelected {
+		if i == m.injuryIndex() {
 			text = selectedStyle.Render(padLine(text, width))
 		} else {
 			text = textStyle.Render(text)
@@ -231,6 +247,12 @@ func (m model) injurySelectedLine() int {
 		return 0
 	}
 	return rowLines[max(0, min(m.injurySelected, len(rowLines)-1))]
+}
+
+// maxScrollForTab is maxTeamScroll as if tab were active.
+func (m model) maxScrollForTab(tab int) int {
+	m.teamTab = tab
+	return m.maxTeamScroll()
 }
 
 // moveTabSelection moves the roster or injury selection by delta rows and

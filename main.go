@@ -329,7 +329,10 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.width, m.height = msg.Width, msg.Height
 		m.settingsScroll = min(m.settingsScroll, max(0, len(nflTeams)-m.settingsPageSize()))
 		m.standingsScroll = min(m.standingsScroll, m.maxStandingsScroll())
-		m.teamScroll = min(m.teamScroll, m.maxTeamScroll())
+		m.teamScroll = min(m.teamScroll, m.maxScrollForTab(tabSchedule))
+		m.rosterScroll = min(m.rosterScroll, m.maxScrollForTab(tabRoster))
+		m.injuryScroll = min(m.injuryScroll, m.maxScrollForTab(tabInjuries))
+		m.playerScroll = min(m.playerScroll, m.maxPlayerScroll())
 		m.detailScroll = min(m.detailScroll, m.maxDetailScroll())
 	case overviewMsg:
 		return m.applyOverview(msg), nil
