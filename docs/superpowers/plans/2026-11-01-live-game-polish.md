@@ -227,7 +227,7 @@ git commit -m "Show situation, timeouts and the latest play in the spotlight pan
 - Produces in `feed.go`:
   - `type scoringEvent struct { GameID, Team string; Points int; AwayScore, HomeScore int; Away, Home string; Period int; Clock string; Favorite bool; Final bool; PlayType, PlayText string; Retries int }`
   - `func scoringEvents(previous, current scoreboard, favorite string) []scoringEvent`: for each game present in both boards with state not `pre` and previous state not `post`: a score change yields one event (`Team` = the side whose score rose; if both rose, the side with the larger rise; `Points` = that rise), `Final` true when state is now `post`. A new final with no score change yields one event with `Points == 0` and `Final == true`. `Period`/`Clock` from `current.Status`.
-  - `func (e scoringEvent) feedLine() string`: `★ ` prefix when `Favorite`; then `Q4 2:14  GB +7  27-19 CAR` where the scorer is listed first with its score, or with `PlayText` set: `Q4 2:14  GB TD  <PlayText>  27-19`. `periodLabel` from `status.go`.
+  - `func (e scoringEvent) feedLine() string`: `★ ` prefix when `Favorite`; then `Q4 2:14  GB +7  CAR 19 – 27 GB` (away – home, abbreviations beside their scores), or with `PlayText` set: `Q4 2:14  GB TD  CAR 19 – 27 GB  <PlayText>`. `periodLabel` from `status.go`.
   - `func enrichEvent(e scoringEvent, detail gameDetail) (scoringEvent, bool)`: finds a `ScoringPlays` entry with `AwayScore == e.AwayScore && HomeScore == e.HomeScore`; sets `PlayType` (`ScoringType.Abbreviation`, else `fmt.Sprintf("+%d", e.Points)`) and `PlayText`; returns false when none match.
   - `func pushFeed(feed []scoringEvent, events []scoringEvent) []scoringEvent`: prepends, keeps 20, skips `Points == 0` events.
 - `alerts.go`: `scoreAlerts(previous, current scoreboard, favorite string, all bool) []scoreAlert` now maps `scoringEvents` through the existing filter and text so `features_test.go`/`main_test.go` alert tests still pass unchanged.
@@ -235,7 +235,7 @@ git commit -m "Show situation, timeouts and the latest play in the spotlight pan
   - model fields `feed []scoringEvent`, `feedPending map[string]int` (game ID → retries used).
   - `type feedDetailMsg struct { id string; detail gameDetail; err error }`; `func (m model) loadFeedDetail(id string) tea.Cmd` like `loadDetail` but returning `feedDetailMsg`.
   - In `boardMsg`: compute `events := scoringEvents(m.board, msg.board, m.favorite)` under the same guard as alerts today but without `m.notify` (`msg.board.CachedAt.IsZero() && m.board.CachedAt.IsZero() && len(m.board.Events) > 0`); alerts derive from the same `events`. `m.feed = pushFeed(m.feed, events)`; for each pushed event's game ID issue `loadFeedDetail` once; for every game ID in `feedPending` with retries < 2 whose newest entry still has empty `PlayText`, issue it again and increment.
-  - In `feedDetailMsg`: for each feed entry with that `GameID` and empty `PlayText`, apply `enrichEvent`; on success delete the pending counter.
+  - `func (m model) enrichFeed(id string, detail gameDetail) model` applies `enrichEvent` to every feed entry with that `GameID` and empty `PlayText`, deleting the pending counter on success. Both `feedDetailMsg` and the existing `detailMsg` call it. `loadFeedDetail` is not issued for a game ID equal to `m.detailID` while `m.showDetail` is true, since `loadDetail` already runs for it each refresh.
   - Where `m.week += delta` runs: `m.feed = nil; m.feedPending = nil`.
 
 - [ ] **Step 1: Write failing tests**
@@ -254,7 +254,7 @@ func TestScoreAlertsUnchangedThroughEvents(t *testing.T) {
 }
 
 func TestFeedLineFormats(t *testing.T) {
-	// diff: "Q4 2:14  GB +7  27-19 CAR"; favorite: "★ Q4 2:14  GB +7  27-19 CAR"; enriched: "Q4 2:14  GB TD  J.Love pass to C.Watson for 12 yards, TOUCHDOWN  27-19"
+	// diff: "Q4 2:14  GB +7  CAR 19 – 27 GB"; favorite: "★ Q4 2:14  GB +7  CAR 19 – 27 GB"; enriched: "Q4 2:14  GB TD  CAR 19 – 27 GB  J.Love pass to C.Watson for 12 yards, TOUCHDOWN"
 }
 
 func TestEnrichEventMatchesScores(t *testing.T) {
@@ -270,6 +270,10 @@ func TestFeedRetriesStopAfterTwo(t *testing.T) {
 	// drive model.Update with boardMsg (score change) then feedDetailMsg with no matching play, then two more boardMsg with no changes:
 	// count loadFeedDetail cmds issued == 3 (initial + 2 retries); entry PlayText still ""
 	// (collect cmds by executing the returned tea.Cmd against a jsonClient that records summary requests)
+}
+
+func TestDetailMsgEnrichesOpenGameWithoutExtraFetch(t *testing.T) {
+	// model showDetail with detailID "1", feed entry for game "1" unenriched; boardMsg with a score change issues loadDetail but no loadFeedDetail (count summary requests == 1); detailMsg with matching play fills PlayText
 }
 
 func TestWeekChangeClearsFeed(t *testing.T) {
@@ -300,7 +304,9 @@ git commit -m "Detect scoring events once for alerts and a session scoring feed"
 
 **Interfaces:**
 - Consumes: `m.feed`, `scoringEvent.feedLine`.
-- Produces: `func (m model) feedPanel(inner int) string`: header `SCORING FEED` (sectionStyle) + rule, then up to 6 `feedLine()`s clipped to `inner`, favorite entries in accentStyle, others textStyle; empty state `No scores yet this session` (dimStyle). `wideDashboard` right column becomes spotlight, feed, snapshot. `narrowDashboard` inserts `⚡ ` + newest `feedLine()` (clipped, liveStyle) between the summary and the spotlight when the feed is non-empty, and reduces `rows` by one in that case.
+- Produces: `func (m model) feedPanel(inner, entries int) string`: header `SCORING FEED` (sectionStyle) + rule, then up to `entries` `feedLine()`s clipped to `inner`, favorite entries in accentStyle, others textStyle; empty state `No scores yet this session` (dimStyle). `wideDashboard` right column becomes spotlight, feed, snapshot; it computes `entries = min(6, len(feed))` then shrinks toward 1 while the right column plus header lines would push the game list under 4 rows, and omits the panel when 1 does not fit. `narrowDashboard` inserts `⚡ ` + newest `feedLine()` (clipped, liveStyle) between the summary and the spotlight when the feed is non-empty.
+- Both layouts compute `rows` from the terminal height minus the measured line count of the panels above or beside the list (`strings.Count(panel, "\n")+1`) instead of today's constants 16 and 12, keeping at least 1 row.
+- `spotlightPanel(inner, maxLines int)`: live lines (situation, timeouts, play) are appended only while the panel stays within `maxLines`, dropping play text first, then timeouts, then situation. Narrow passes `maxLines = max(4, m.height-14)`, wide passes `m.height-18`. Task 4's test passes a generous height; this task adds the short-terminal test.
 
 - [ ] **Step 1: Write failing tests**
 
@@ -308,6 +314,10 @@ git commit -m "Detect scoring events once for alerts and a session scoring feed"
 func TestWideDashboardFeedPanel(t *testing.T) {
 	// width 112, height 34, feed of 8 entries → view Contains "SCORING FEED", contains entries 1..6 clocks, NotContains entry 7's clock, NotContains "QUICK KEYS"; strings.Count(view,"\n")+1 <= 34
 	// empty feed → Contains "No scores yet this session"
+}
+
+func TestDashboardFitsWithLiveFavoriteAndFeed(t *testing.T) {
+	// favorite live with 400-char last play, feed of 8, sizes {80,24},{100,30},{112,34},{150,36}: strings.Count(view,"\n")+1 <= height and at least one game row rendered ("›" present)
 }
 
 func TestNarrowDashboardFeedLine(t *testing.T) {
