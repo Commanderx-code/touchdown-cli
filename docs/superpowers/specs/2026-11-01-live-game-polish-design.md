@@ -94,29 +94,43 @@ every score as it lands without opening each game.
   only unless `-notify-all`, finals included) and keep the same text.
 - Detection happens where alerts are detected today, on each board
   refresh, and is skipped on first load and on a cached board.
-- Feed entries show at once with the diff: `Q4 2:14  GB +7  27-19 CAR`,
-  `★` prefix when the favorite is in the game. The model then issues one
-  `loadDetail`-style summary fetch for that game; when a scoring play's
-  `awayScore`/`homeScore` equal the event's scores, the entry becomes
-  `Q4 2:14  GB TD  Love 12-yd pass to Watson (Crosby kick)  27-19`. The
+- Feed entries show at once with the diff: `Q4 2:14  GB +7  CAR 19 – 27 GB`,
+  `★` prefix when the favorite is in the game. Scores always read away –
+  home with the abbreviation beside each score, the same rule as every
+  other score in the app. The model then issues one summary fetch for that
+  game; when a scoring play's `awayScore`/`homeScore` equal the event's
+  scores, the entry becomes
+  `Q4 2:14  GB TD  CAR 19 – 27 GB  Love 12-yd pass to Watson (Crosby kick)`,
+  play text last so clipping trims the play, never the score. The
   play type label is the summary's `scoringType.abbreviation` (`TD`, `FG`,
   `SF`, `2PT`) or the diff points when absent. If no play matches, retry on
   the next two refreshes, then keep the diff entry.
 - Finals with no score change produce an alert as today but no feed entry.
+- When the scoring game is open in the game center, its regular summary
+  refresh serves the enrichment too and no extra request is made. Any
+  summary response, whichever view asked for it, enriches matching feed
+  entries.
 - The feed holds the 20 newest events, newest first, in memory; it clears
   when the week changes and starts empty on launch.
 
-### Feed placement
+### Feed placement and height budget
 
 - Wide dashboard (`width >= 112 && height >= 34`): a `SCORING FEED` panel
   in the right column between the spotlight panel and the conference
-  snapshot, showing the newest 6 entries, each one line clipped to the
-  panel. Empty state: `No scores yet this session`. The Quick Keys panel
-  is removed; `?` still lists the keys.
+  snapshot, showing at most the newest 6 entries, each one line clipped to
+  the panel. Empty state: `No scores yet this session`. The Quick Keys
+  panel is removed; `?` still lists the keys.
 - Narrow dashboard: one line directly under the summary line,
-  `⚡ Q4 2:14  GB TD  Love 12-yd pass to Watson  27-19`, newest entry only,
-  clipped; blank (no row) when the feed is empty. The game list loses one
-  row to it on short terminals.
+  `⚡ Q4 2:14  GB TD  CAR 19 – 27 GB  Love 12-yd pass to Watson`, newest
+  entry only, clipped; no row when the feed is empty.
+- The dashboard never exceeds the terminal height. Both layouts measure
+  the rendered spotlight (and feed line) instead of assuming a fixed
+  height, and size the game list from what remains. On the wide layout the
+  feed shrinks from 6 entries toward 1 before the game list drops below 4
+  rows; if even 1 entry does not fit, the feed panel is omitted. The
+  spotlight's live lines are dropped in this order when the terminal is
+  short: play text first, then timeouts, then the situation line, so the
+  game list always keeps at least 1 row at 80x24.
 - Compact layout (`-compact`): no feed. Rows append the situation only
   when the terminal is 60 columns or wider.
 
@@ -124,6 +138,15 @@ every score as it lands without opening each game.
 
 `?` legend gains `RED ZONE  offense inside the 20` and
 `TO ●●○  timeouts remaining`.
+
+## Calls made after the builder check
+
+- Scores in feed entries read away – home with both abbreviations, play
+  text last.
+- Layout math measures rendered panels; feed entries and spotlight live
+  lines yield before the game list does.
+- One summary response serves both the game center and the feed when the
+  IDs match.
 
 ## Left to the builder
 
