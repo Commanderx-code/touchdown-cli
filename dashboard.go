@@ -158,6 +158,9 @@ func (m model) spotlightPanel(inner, maxLines int) string {
 		lines = append(lines, textStyle.Render(clipText(message, inner)))
 		lines = append(lines, dimStyle.Render("Use ←/→ to browse other weeks"))
 	}
+	if injuries := m.spotlightInjuryLine(); injuries != "" {
+		lines = append(lines, dimStyle.Render(clipText(injuries, inner)))
+	}
 	var live []string
 	if hasWeek && week.Status.Type.State == "in" {
 		live = spotlightLiveLines(week, inner)
@@ -184,6 +187,19 @@ func (m model) spotlightPanel(inner, maxLines int) string {
 		lines = append(lines, sectionStyle.Render(clipText(lastLine, inner)))
 	}
 	return framedLines(lines, inner)
+}
+
+// spotlightInjuryLine is "INJURIES  2 OUT · 1 Q" for the favorite, or ""
+// while loading or when nobody is Out, Doubtful or Questionable.
+func (m model) spotlightInjuryLine() string {
+	entry, ok := m.injuriesFor(m.favorite)
+	if !ok || entry.Report.Team == "" {
+		return ""
+	}
+	if summary := entry.Report.gameDaySummary(); summary != "" {
+		return "INJURIES  " + summary
+	}
+	return ""
 }
 
 // lineCount is the number of terminal lines a rendered block occupies.

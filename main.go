@@ -231,7 +231,7 @@ func (m model) openFavoriteGame() (model, tea.Cmd) {
 				break
 			}
 		}
-		return m, m.loadDetail(game.ID)
+		return m.withGameInjuries(m.loadDetail(game.ID))
 	}
 	notice := "No " + favoriteLabel(m.favorite) + " game this week · showing season page"
 	if m.loading {
@@ -311,7 +311,17 @@ func (m model) scrollPageSize() int {
 
 func tick() tea.Cmd { return tea.Tick(30*time.Second, func(t time.Time) tea.Msg { return tickMsg(t) }) }
 
-func (m model) Init() tea.Cmd { return tea.Batch(m.loadBoard(), tick()) }
+func (m model) Init() tea.Cmd { return tea.Batch(append(m.initialLoads(), tick())...) }
+
+// initialLoads is every fetch that starts with the program: the scoreboard
+// and the favorite's injury report.
+func (m model) initialLoads() []tea.Cmd {
+	cmds := []tea.Cmd{m.loadBoard()}
+	if m.favorite != "" {
+		cmds = append(cmds, m.loadInjuries(m.favorite))
+	}
+	return cmds
+}
 
 func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
@@ -542,7 +552,8 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case tickMsg:
 		if (m.showHome || m.showTeam || !m.showDetail && !m.showStandings) && m.teamScheduleDue() {
 			m.teamLoading = true
-			return m, tea.Batch(m.loadBoard(), m.loadTeam(), tick())
+			next, injuries := m.requestInjuries(m.favorite, true)
+			return next, tea.Batch(next.loadBoard(), next.loadTeam(), tick(), injuries)
 		}
 		if m.showStandings {
 			if !m.standingsLoading {
@@ -663,6 +674,10 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.standingsLoading = true
 				return m, m.loadStandings()
 			}
+			if m.showDetail {
+				next, injuries := m.requestGameInjuries(true)
+				return next, tea.Batch(next.loadBoard(), injuries)
+			}
 			return m, m.loadBoard()
 		case "up", "k":
 			m = m.scrollBy(-1)
@@ -698,7 +713,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.detailTab = 0
 				m.detailScroll = 0
 				m.errorText = ""
-				return m, m.loadDetail(event.ID)
+				return m.withGameInjuries(m.loadDetail(event.ID))
 			}
 			games := m.visibleGames()
 			if !m.showDetail && !m.showStandings && !m.showTeam && m.selected < len(games) {
@@ -711,7 +726,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.detailFromTeam = false
 				m.detailTab = 0
 				m.detailScroll = 0
-				return m, m.loadDetail(m.detailID)
+				return m.withGameInjuries(m.loadDetail(m.detailID))
 			}
 		case "1", "2", "3", "4", "tab":
 			if m.showDetail {
