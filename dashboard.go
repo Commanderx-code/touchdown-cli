@@ -155,6 +155,9 @@ func (m model) spotlightPanel(inner int) string {
 		lines = append(lines, textStyle.Render(clipText(message, inner)))
 		lines = append(lines, dimStyle.Render("Use ←/→ to browse other weeks"))
 	}
+	if hasWeek && week.Status.Type.State == "in" {
+		lines = append(lines, spotlightLiveLines(week, inner)...)
+	}
 	lastLine := ""
 	if last != nil {
 		opponent, location, score := last.matchup(m.favorite)
@@ -169,6 +172,25 @@ func (m model) spotlightPanel(inner int) string {
 		lines = append(lines, sectionStyle.Render(clipText(lastLine, inner)))
 	}
 	return framedLines(lines, inner)
+}
+
+// spotlightLiveLines adds the situation, timeouts and latest play (at most
+// two lines) for the favorite team's game in progress.
+func spotlightLiveLines(g game, inner int) []string {
+	var lines []string
+	if situation := situationText(g); situation != "" {
+		lines = append(lines, liveStyle.Render(clipText(situation, inner)))
+	}
+	if timeouts := timeoutsText(g); timeouts != "" {
+		lines = append(lines, dimStyle.Render(clipText(timeouts, inner)))
+	}
+	if latest := latestPlayText(g); latest != "" {
+		wrapped := wrapWords(latest, inner)
+		for _, row := range wrapped[:min(2, len(wrapped))] {
+			lines = append(lines, dimStyle.Render(clipText(row, inner)))
+		}
+	}
+	return lines
 }
 
 func (m model) favoriteScheduleGames() (next, last *scheduledGame) {

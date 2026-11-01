@@ -137,3 +137,32 @@ func TestCompactRowSituationNeedsSixtyColumns(t *testing.T) {
 		t.Fatalf("compact at 59 columns must not show the situation:\n%s", narrow)
 	}
 }
+
+func TestSpotlightShowsLiveSituation(t *testing.T) {
+	m := liveBoardModel(120, 40, false)
+	m.favorite = "GB"
+	view := m.View()
+	for _, want := range []string{"GB ball  3rd & 7 at CAR 22", "CAR TO ●●○   GB TO ●●●", "J.Love pass short right"} {
+		if strings.Count(view, want) < 1 {
+			t.Fatalf("spotlight missing %q:\n%s", want, view)
+		}
+	}
+	if n := strings.Count(view, "\n") + 1; n > 40 {
+		t.Fatalf("dashboard overflowed: %d lines", n)
+	}
+	long := strings.Repeat("word ", 80)
+	m.board.Events[0].Competitions[0].Situation.LastPlay.Text = long
+	view = m.View()
+	playLines := 0
+	for _, line := range strings.Split(view, "\n") {
+		if strings.Contains(line, "word word word") && !strings.Contains(line, "LATEST") {
+			playLines++
+		}
+	}
+	if playLines == 0 || playLines > 2 {
+		t.Fatalf("latest play should wrap to at most 2 lines, got %d:\n%s", playLines, view)
+	}
+	if n := strings.Count(view, "\n") + 1; n > 40 {
+		t.Fatalf("dashboard overflowed with long play: %d lines", n)
+	}
+}
