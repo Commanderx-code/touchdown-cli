@@ -535,3 +535,19 @@ func TestRosterUnknownGroupKeySanitized(t *testing.T) {
 		t.Fatalf("title must be sanitized and upper-cased: %q", r.Groups[0].Title)
 	}
 }
+
+func TestFootersAndHelpMentionTabs(t *testing.T) {
+	m := seasonTabsModel(t, nil)
+	m.width, m.height = 120, 30
+	if view := m.View(); !strings.Contains(view, "1/2/3 tabs") {
+		t.Fatal("season page footer must mention 1/2/3 tabs")
+	}
+	m.width = 60
+	if view := m.View(); !strings.Contains(view, "1/2/3") {
+		t.Fatal("narrow season page footer must mention 1/2/3")
+	}
+	m.width, m.showHelp = 120, true
+	if view := m.View(); !strings.Contains(view, "1/2/3 on a season page") {
+		t.Fatal("help must mention the season page tabs")
+	}
+}

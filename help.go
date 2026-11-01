@@ -40,6 +40,7 @@ func (m model) renderHelp(width int) string {
 		textStyle.Render("Enter           open a game or selected season matchup"),
 		textStyle.Render("←/→ or h/l      change week, conference, or settings theme"),
 		textStyle.Render("Home menu       Team schedules picks any team; Season lists every week"),
+		textStyle.Render("1/2/3 on a season page: schedule, roster, injuries; Enter opens a player"),
 		"",
 		sectionStyle.Render("QUICK KEYS"),
 		textStyle.Render("g  favorite game    p  favorite season    t  team schedules"),

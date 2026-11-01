@@ -77,7 +77,7 @@ func (m model) View() string {
 	if m.showStandings {
 		footer = "←/→ conference  ·  ↑/↓, PgUp/PgDn, wheel scroll  ·  Esc back  ·  q quit"
 	} else if m.showTeam {
-		footer = "↑/↓ select game  ·  Enter open  ·  t opponent  ·  Esc back  ·  r refresh  ·  q quit"
+		footer = "1/2/3 tabs  ·  ↑/↓ select  ·  Enter open  ·  t opponent  ·  Esc back  ·  r refresh  ·  q quit"
 	} else if m.showDetail {
 		footer = "1/2/3/4 tabs  ·  ↑/↓ scroll  ·  Esc back  ·  r refresh  ·  q quit"
 	}
@@ -88,7 +88,7 @@ func (m model) View() string {
 		if m.showStandings {
 			footer = "←/→ AFC/NFC · ↑/↓/wheel · Esc · q"
 		} else if m.showTeam {
-			footer = "↑/↓ game · Enter · t opponent · Esc · q"
+			footer = "1/2/3 · ↑/↓ · Enter · t · Esc · q"
 		} else if m.showDetail {
 			footer = "1/2/3/4 tabs · ↑/↓ scroll · Esc back · q"
 		} else {
