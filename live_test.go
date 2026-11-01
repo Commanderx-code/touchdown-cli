@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"net/http"
+	"strings"
 	"testing"
 )
 
@@ -101,5 +102,38 @@ func TestLiveContextLinesOrder(t *testing.T) {
 		if got[i] != want[i] {
 			t.Errorf("line %d: got %q want %q", i, got[i], want[i])
 		}
+	}
+}
+
+func liveBoardModel(width, height int, compact bool) model {
+	three, two := 3, 2
+	g := liveGame("8", 3, 7, "3rd & 7 at CAR 22", true, &two, &three, "J.Love pass short right to C.Watson for 9 yards")
+	return model{board: scoreboard{Events: []game{g}}, season: 2026, week: 9, width: width, height: height, compact: compact}
+}
+
+func TestDashboardLiveRowShowsSituationNotVenue(t *testing.T) {
+	m := liveBoardModel(100, 30, false)
+	view := m.View()
+	for _, want := range []string{"GB ball  3rd & 7 at CAR 22", "RED ZONE"} {
+		if !strings.Contains(view, want) {
+			t.Fatalf("missing %q:\n%s", want, view)
+		}
+	}
+	if strings.Contains(view, "Lambeau Field") || strings.Contains(view, "TO ●") {
+		t.Fatalf("live row must drop the venue and never show timeouts:\n%s", view)
+	}
+	m.board.Events[0].Status.Type.State = "post"
+	if view := m.View(); !strings.Contains(view, "Lambeau Field") {
+		t.Fatalf("final row lost the venue:\n%s", view)
+	}
+}
+
+func TestCompactRowSituationNeedsSixtyColumns(t *testing.T) {
+	wide := liveBoardModel(60, 20, true).View()
+	if !strings.Contains(wide, "GB ball") || strings.Contains(wide, "TO ●") {
+		t.Fatalf("compact at 60 columns:\n%s", wide)
+	}
+	if narrow := liveBoardModel(59, 20, true).View(); strings.Contains(narrow, "GB ball") {
+		t.Fatalf("compact at 59 columns must not show the situation:\n%s", narrow)
 	}
 }
