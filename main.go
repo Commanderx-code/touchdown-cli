@@ -116,6 +116,17 @@ type model struct {
 	overviewScroll           int
 	overviewSeason           int
 	overviewFavorite         string
+	injuryReports            map[string]injuryEntry
+	teamTab                  int
+	showPlayer               bool
+	player                   playerRef
+	playerScroll             int
+	rosterSelected           int
+	rosterScroll             int
+	injurySelected           int
+	injuryScroll             int
+	rosters                  map[string]rosterEntry
+	players                  map[string]playerEntry
 	history                  []backTarget
 	pickerIndex              int
 	pickerScroll             int
@@ -179,6 +190,7 @@ func (m model) openFavoriteSeason(notice string) (model, tea.Cmd) {
 	m.showTeam = true
 	m.showDetail = false
 	m.showStandings = false
+	m = m.resetTeamTabs()
 	m.teamScroll = 0
 	m.teamSelected = 0
 	m.teamNotice = notice
@@ -219,7 +231,7 @@ func (m model) openFavoriteGame() (model, tea.Cmd) {
 				break
 			}
 		}
-		return m, m.loadDetail(game.ID)
+		return m.withGameInjuries(m.loadDetail(game.ID))
 	}
 	notice := "No " + favoriteLabel(m.favorite) + " game this week · showing season page"
 	if m.loading {
@@ -254,6 +266,8 @@ func (m model) scrollBy(delta int) model {
 		m.homeSelection = max(0, min(m.homeSelection+delta, len(m.homeOptions())-1))
 	case m.showStandings:
 		m.standingsScroll = max(0, min(m.standingsScroll+delta, m.maxStandingsScroll()))
+	case m.showTeam && m.teamTab != tabSchedule:
+		m = m.moveTabSelection(delta)
 	case m.showTeam:
 		events := m.activeTeamPage().Data.Events
 		if len(events) == 0 {
@@ -297,7 +311,17 @@ func (m model) scrollPageSize() int {
 
 func tick() tea.Cmd { return tea.Tick(30*time.Second, func(t time.Time) tea.Msg { return tickMsg(t) }) }
 
-func (m model) Init() tea.Cmd { return tea.Batch(m.loadBoard(), tick()) }
+func (m model) Init() tea.Cmd { return tea.Batch(append(m.initialLoads(), tick())...) }
+
+// initialLoads is every fetch that starts with the program: the scoreboard
+// and the favorite's injury report.
+func (m model) initialLoads() []tea.Cmd {
+	cmds := []tea.Cmd{m.loadBoard()}
+	if m.favorite != "" {
+		cmds = append(cmds, m.loadInjuries(m.favorite))
+	}
+	return cmds
+}
 
 func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
@@ -305,10 +329,19 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.width, m.height = msg.Width, msg.Height
 		m.settingsScroll = min(m.settingsScroll, max(0, len(nflTeams)-m.settingsPageSize()))
 		m.standingsScroll = min(m.standingsScroll, m.maxStandingsScroll())
-		m.teamScroll = min(m.teamScroll, m.maxTeamScroll())
+		m.teamScroll = min(m.teamScroll, m.maxScrollForTab(tabSchedule))
+		m.rosterScroll = min(m.rosterScroll, m.maxScrollForTab(tabRoster))
+		m.injuryScroll = min(m.injuryScroll, m.maxScrollForTab(tabInjuries))
+		m.playerScroll = min(m.playerScroll, m.maxPlayerScroll())
 		m.detailScroll = min(m.detailScroll, m.maxDetailScroll())
 	case overviewMsg:
 		return m.applyOverview(msg), nil
+	case injuriesMsg:
+		return m.applyInjuries(msg), nil
+	case rosterMsg:
+		return m.applyRoster(msg), nil
+	case playerMsg:
+		return m.applyPlayer(msg), nil
 	case boardMsg:
 		if m.season != msg.season || m.week != msg.week || m.seasonType != msg.seasonType {
 			break
@@ -504,6 +537,15 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 			break
 		}
+		if m.showPlayer {
+			switch msg.Button {
+			case tea.MouseButtonWheelUp:
+				m.playerScroll = max(0, m.playerScroll-3)
+			case tea.MouseButtonWheelDown:
+				m.playerScroll = min(m.maxPlayerScroll(), m.playerScroll+3)
+			}
+			break
+		}
 		switch msg.Button {
 		case tea.MouseButtonWheelUp:
 			m = m.scrollBy(-3)
@@ -513,7 +555,8 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case tickMsg:
 		if (m.showHome || m.showTeam || !m.showDetail && !m.showStandings) && m.teamScheduleDue() {
 			m.teamLoading = true
-			return m, tea.Batch(m.loadBoard(), m.loadTeam(), tick())
+			next, injuries := m.requestInjuries(m.favorite, true)
+			return next, tea.Batch(next.loadBoard(), next.loadTeam(), tick(), injuries)
 		}
 		if m.showStandings {
 			if !m.standingsLoading {
@@ -556,6 +599,12 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				return m, tea.Quit
 			}
 			return m.updateOverviewKey(key)
+		}
+		if m.showPlayer {
+			if key == "q" || key == "ctrl+c" {
+				return m, tea.Quit
+			}
+			return m.updatePlayerKey(key)
 		}
 		if key == "t" && m.showTeam && !m.showDetail {
 			return m.jumpToOpponent()
@@ -612,6 +661,9 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.showHome = true
 			}
 		case "r":
+			if m.showTeam && m.teamTab != tabSchedule {
+				return m.refreshTeamTab()
+			}
 			m.loading = true
 			if m.showTeam && !m.showingFavorite() {
 				m.view.Loading = true
@@ -624,6 +676,10 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			if m.showStandings {
 				m.standingsLoading = true
 				return m, m.loadStandings()
+			}
+			if m.showDetail {
+				next, injuries := m.requestGameInjuries(true)
+				return next, tea.Batch(next.loadBoard(), injuries)
 			}
 			return m, m.loadBoard()
 		case "up", "k":
@@ -639,7 +695,10 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				next, cmd := m.openHomeSelection()
 				return next, cmd
 			}
-			if page := m.activeTeamPage(); m.showTeam && page.Season == m.season && len(page.Data.Events) > 0 {
+			if m.showTeam && m.teamTab != tabSchedule {
+				return m.openSelectedPlayer()
+			}
+			if page := m.activeTeamPage(); m.showTeam && m.teamTab == tabSchedule && page.Season == m.season && len(page.Data.Events) > 0 {
 				event := page.Data.Events[min(m.teamSelected, len(page.Data.Events)-1)]
 				m.detailID = event.ID
 				m.detailGame = event.toGame()
@@ -657,7 +716,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.detailTab = 0
 				m.detailScroll = 0
 				m.errorText = ""
-				return m, m.loadDetail(event.ID)
+				return m.withGameInjuries(m.loadDetail(event.ID))
 			}
 			games := m.visibleGames()
 			if !m.showDetail && !m.showStandings && !m.showTeam && m.selected < len(games) {
@@ -670,7 +729,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.detailFromTeam = false
 				m.detailTab = 0
 				m.detailScroll = 0
-				return m, m.loadDetail(m.detailID)
+				return m.withGameInjuries(m.loadDetail(m.detailID))
 			}
 		case "1", "2", "3", "4", "tab":
 			if m.showDetail {
@@ -687,6 +746,18 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 					m.detailTab = 3
 				}
 				m.detailScroll = 0
+			}
+			if m.showTeam {
+				switch msg.String() {
+				case "tab":
+					return m.setTeamTab((m.teamTab + 1) % 3)
+				case "1":
+					return m.setTeamTab(tabSchedule)
+				case "2":
+					return m.setTeamTab(tabRoster)
+				case "3":
+					return m.setTeamTab(tabInjuries)
+				}
 			}
 		case "left", "h", "right", "l":
 			if m.showHome {
@@ -798,6 +869,7 @@ func (m model) openHomeSelection() (model, tea.Cmd) {
 		m.favoritesOnly, m.liveOnly = true, false
 	case 3:
 		m.viewTeam = ""
+		m = m.resetTeamTabs()
 		m.showTeam = true
 		m.teamFromHome = true
 		m.teamScroll = 0

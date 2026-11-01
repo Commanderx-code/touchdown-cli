@@ -1,0 +1,701 @@
+package main
+
+import (
+	"context"
+	"errors"
+	"fmt"
+	"io"
+	"net/http"
+	"regexp"
+	"sort"
+	"strings"
+	"testing"
+	"time"
+
+	tea "github.com/charmbracelet/bubbletea"
+	"github.com/charmbracelet/lipgloss"
+)
+
+const injuriesJSON = `{"injuries":[
+ {"status":"Active","type":{"abbreviation":"A"},"athlete":{"displayName":"Josh Jacobs","position":{"abbreviation":"RB"},"links":[{"href":"https://www.espn.com/nfl/player/_/id/4047365/josh-jacobs"}]},"shortComment":"fine","date":"2026-10-31T14:09Z"},
+ {"status":"Questionable","type":{"abbreviation":"Q"},"athlete":{"displayName":"Christian Watson","position":{"abbreviation":"WR"},"links":[{"href":"https://www.espn.com/nfl/player/_/id/4258173/christian-watson"}]},"details":{"type":"Ribs","returnDate":"2026-11-08"},"shortComment":"Watson said he suffered a broken rib.","date":"2026-10-30T04:06Z"},
+ {"status":"Out","type":{"abbreviation":"O"},"athlete":{"displayName":"Micah Parsons","position":{"abbreviation":"DE"},"links":[{"href":"https://www.espn.com/nfl/player/_/id/4361423/micah-parsons"}]},"details":{"type":"Knee - ACL","returnDate":"2026-11-25"},"shortComment":"Targeting Week 12.\u0007","date":"2026-10-31T14:09Z"},
+ {"status":"Injured Reserve","type":{"abbreviation":"IR"},"athlete":{"displayName":"No Link","position":{"abbreviation":"G"},"links":[]},"shortComment":"","date":"2026-10-29T22:54Z"}
+]}`
+
+func TestInjuriesParsesSortsAndDropsActive(t *testing.T) {
+	var path, query string
+	api := jsonClient(t, func(req *http.Request) { path, query = req.URL.Path, req.URL.RawQuery }, injuriesJSON)
+	report, err := api.injuries(context.Background(), "GB")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.HasSuffix(path, "/injuries") || query != "team=gb" {
+		t.Fatalf("request %s?%s", path, query)
+	}
+	if len(report.Entries) != 3 || report.Team != "GB" {
+		t.Fatalf("entries %+v", report.Entries)
+	}
+	parsons := report.Entries[0]
+	if parsons.Name != "Micah Parsons" || parsons.AthleteID != "4361423" || parsons.Status != "Out" || parsons.Code != "O" || parsons.BodyPart != "Knee - ACL" || parsons.ReturnDate != "2026-11-25" || parsons.Comment != "Targeting Week 12." || parsons.Position != "DE" {
+		t.Fatalf("parsons %+v", parsons)
+	}
+	if report.Entries[1].Name != "Christian Watson" || report.Entries[2].Name != "No Link" || report.Entries[2].AthleteID != "" {
+		t.Fatalf("order or id: %+v", report.Entries)
+	}
+	if out, d, q, ir := report.counts(); out != 1 || d != 0 || q != 1 || ir != 1 {
+		t.Fatalf("counts %d %d %d %d", out, d, q, ir)
+	}
+	if report.summary() != "1 OUT · 1 Q · 1 IR" || report.gameDaySummary() != "1 OUT · 1 Q" {
+		t.Fatalf("summary %q gameDay %q", report.summary(), report.gameDaySummary())
+	}
+	if len(report.gameDay()) != 2 {
+		t.Fatalf("gameDay %+v", report.gameDay())
+	}
+	if _, ok := report.find("4258173"); !ok {
+		t.Fatal("find Watson")
+	}
+	if statusLabel(parsons) != "OUT" || statusLabel(report.Entries[1]) != "Q" || statusLabel(report.Entries[2]) != "IR" || statusLabel(injury{Code: "susp"}) != "SUSP" {
+		t.Fatal("status labels")
+	}
+	if returnLabel("2026-11-25") != "back Nov 25" || returnLabel("") != "" || returnLabel("soon") != "" {
+		t.Fatalf("returnLabel %q", returnLabel("2026-11-25"))
+	}
+	if (injuryReport{}).summary() != "" {
+		t.Fatal("empty summary")
+	}
+}
+
+const rosterJSON = `{"athletes":[
+ {"position":"offense","items":[{"id":"4036378","displayName":"Jordan Love","jersey":"10","position":{"abbreviation":"QB"},"age":27,"displayHeight":"6' 4\"","displayWeight":"219 lbs","experience":{"years":6},"college":{"shortName":"Utah State"},"status":{"name":"Active"},"injuries":[]},
+   {"id":"1","displayName":"No Jersey","position":{"abbreviation":"WR"},"status":{"name":"Active"},"injuries":[{"status":"Questionable"}]}]},
+ {"position":"specialTeam","items":[]},
+ {"position":"injuredReserveOrOut","items":[{"id":"2","displayName":"Hurt Guy","jersey":"55","position":{"abbreviation":"LB"},"experience":{"years":0},"status":{"name":"Injured Reserve"},"injuries":[{"status":"Injured Reserve"}]}]}
+]}`
+
+func TestRosterGroupsAndMissingFields(t *testing.T) {
+	var path string
+	api := jsonClient(t, func(req *http.Request) { path = req.URL.Path }, rosterJSON)
+	r, err := api.roster(context.Background(), "GB")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.HasSuffix(path, "/teams/gb/roster") || r.Team != "GB" {
+		t.Fatalf("request %s team %q", path, r.Team)
+	}
+	if len(r.Groups) != 2 || r.Groups[0].Title != "OFFENSE" || len(r.Groups[0].Players) != 2 || r.Groups[1].Title != "IR / OUT" || len(r.Groups[1].Players) != 1 {
+		t.Fatalf("groups %+v", r.Groups)
+	}
+	love := r.Groups[0].Players[0]
+	if love.ID != "4036378" || love.Jersey != "10" || love.Position != "QB" || love.Age != 27 || love.Years != 6 || !love.HasYears || love.College != "Utah State" || love.Height != `6' 4"` || love.Weight != "219 lbs" || love.Injury != "" {
+		t.Fatalf("love %+v", love)
+	}
+	if experienceLabel(love) != "6 yrs" || seasonLabelFor(love) != "6th season" {
+		t.Fatalf("love labels %q %q", experienceLabel(love), seasonLabelFor(love))
+	}
+	nj := r.Groups[0].Players[1]
+	if nj.Jersey != "--" || nj.HasYears || experienceLabel(nj) != "" || seasonLabelFor(nj) != "" || nj.Injury != "Questionable" || nj.College != "" {
+		t.Fatalf("no jersey %+v", nj)
+	}
+	hurt := r.Groups[1].Players[0]
+	if experienceLabel(hurt) != "Rookie" || seasonLabelFor(hurt) != "Rookie" || hurt.Status != "Injured Reserve" {
+		t.Fatalf("hurt %+v", hurt)
+	}
+}
+
+const overviewJSON = `{"statistics":{"displayName":"2026 Passing","labels":["CMP","ATT","YDS","CAR","YDS"],"categories":[{"name":"passing","displayName":"Passing","count":3},{"name":"rushing","displayName":"Rushing","count":2}],"splits":[{"displayName":"Regular Season","stats":["114","171","1,504","48"]},{"displayName":"Projected","stats":["323","485","4,261","136","680"]}]}}`
+
+func TestPlayerOverviewSlicesCategories(t *testing.T) {
+	var path string
+	api := jsonClient(t, func(req *http.Request) { path = req.URL.Path }, overviewJSON)
+	stats, err := api.playerOverview(context.Background(), "3918298")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.HasSuffix(path, "/athletes/3918298/overview") || stats.ID != "3918298" {
+		t.Fatalf("request %s id %q", path, stats.ID)
+	}
+	if len(stats.Sections) != 2 {
+		t.Fatalf("sections %+v", stats.Sections)
+	}
+	p := stats.Sections[0]
+	if p.Title != "PASSING" || p.Split != "" || strings.Join(p.Labels, ",") != "CMP,ATT,YDS" || strings.Join(p.Values, ",") != "114,171,1,504" {
+		t.Fatalf("passing %+v", p)
+	}
+	r := stats.Sections[1]
+	if r.Title != "RUSHING" || strings.Join(r.Labels, ",") != "CAR,YDS" || strings.Join(r.Values, ",") != "48" {
+		t.Fatalf("rushing %+v", r)
+	}
+	career := `{"statistics":{"labels":["G","TD"],"categories":[{"displayName":"General","count":5}],"splits":[{"displayName":"Projected","stats":["1","2"]},{"displayName":"Career","stats":["17","9"]}]}}`
+	stats, err = jsonClient(t, func(*http.Request) {}, career).playerOverview(context.Background(), "1")
+	if err != nil || len(stats.Sections) != 1 || stats.Sections[0].Split != "CAREER" || strings.Join(stats.Sections[0].Values, ",") != "17,9" || len(stats.Sections[0].Labels) != 2 {
+		t.Fatalf("career %+v err %v", stats.Sections, err)
+	}
+	stats, err = jsonClient(t, func(*http.Request) {}, `{"statistics":null}`).playerOverview(context.Background(), "1")
+	if err != nil || len(stats.Sections) != 0 {
+		t.Fatalf("no stats: %+v err %v", stats.Sections, err)
+	}
+}
+
+func TestRequestInjuriesOncePerTeamAndStoresReply(t *testing.T) {
+	m := model{api: jsonClient(t, func(*http.Request) {}, injuriesJSON)}
+	m, cmd := m.requestInjuries("GB", false)
+	if cmd == nil {
+		t.Fatal("first request must fetch")
+	}
+	if entry, ok := m.injuriesFor("GB"); !ok || !entry.Loading {
+		t.Fatalf("entry after request: %+v ok %v", entry, ok)
+	}
+	if _, again := m.requestInjuries("GB", false); again != nil {
+		t.Fatal("in-flight request must not refetch")
+	}
+	next, _ := m.Update(runCmds(cmd)[0])
+	m = next.(model)
+	entry, ok := m.injuriesFor("GB")
+	if !ok || entry.Loading || entry.Error != "" || len(entry.Report.Entries) != 3 {
+		t.Fatalf("stored entry: %+v", entry)
+	}
+	if _, again := m.requestInjuries("GB", false); again != nil {
+		t.Fatal("loaded entry must not refetch without force")
+	}
+	if _, forced := m.requestInjuries("GB", true); forced == nil {
+		t.Fatal("force must refetch")
+	}
+	m = m.applyInjuries(injuriesMsg{team: "DET", err: errors.New("boom")})
+	if entry, _ := m.injuriesFor("DET"); entry.Error != "boom" || entry.Loading {
+		t.Fatalf("error entry: %+v", entry)
+	}
+}
+
+func TestRosterAndPlayerStores(t *testing.T) {
+	m := model{api: jsonClient(t, func(*http.Request) {}, rosterJSON)}
+	m, cmd := m.requestRoster("GB", false)
+	next, _ := m.Update(runCmds(cmd)[0])
+	m = next.(model)
+	if entry, ok := m.rosterFor("GB"); !ok || entry.Loading || len(entry.Data.Groups) != 2 {
+		t.Fatalf("roster entry: %+v", entry)
+	}
+	if _, again := m.requestRoster("GB", false); again != nil {
+		t.Fatal("loaded roster must not refetch")
+	}
+	m.api = jsonClient(t, func(*http.Request) {}, overviewJSON)
+	m, cmd = m.requestPlayer("3918298", false)
+	next, _ = m.Update(runCmds(cmd)[0])
+	m = next.(model)
+	if entry, ok := m.playerFor("3918298"); !ok || entry.Loading || len(entry.Stats.Sections) != 2 {
+		t.Fatalf("player entry: %+v", entry)
+	}
+	m = m.applyPlayer(playerMsg{id: "x", err: errors.New("bad")})
+	if entry, _ := m.playerFor("x"); entry.Error != "bad" {
+		t.Fatalf("player error: %+v", entry)
+	}
+}
+
+// teamDataClient serves schedules, rosters and injury reports for any team.
+func teamDataClient(t *testing.T, seen *[]string) *client {
+	t.Helper()
+	return &client{http: &http.Client{Transport: roundTripFunc(func(req *http.Request) (*http.Response, error) {
+		if seen != nil {
+			*seen = append(*seen, req.URL.Path+"?"+req.URL.RawQuery)
+		}
+		body := `{}`
+		switch {
+		case strings.HasSuffix(req.URL.Path, "/roster"):
+			body = rosterJSON
+		case strings.HasSuffix(req.URL.Path, "/injuries"):
+			body = injuriesJSON
+		case strings.HasSuffix(req.URL.Path, "/overview"):
+			body = overviewJSON
+		case strings.HasSuffix(req.URL.Path, "/schedule"):
+			parts := strings.Split(req.URL.Path, "/")
+			body = scheduleJSON(strings.ToUpper(parts[len(parts)-2]))
+		}
+		return &http.Response{StatusCode: 200, Body: io.NopCloser(strings.NewReader(body)), Header: make(http.Header)}, nil
+	})}}
+}
+
+func seasonTabsModel(t *testing.T, seen *[]string) model {
+	t.Helper()
+	m := favoriteSeasonModel(t)
+	m.api = teamDataClient(t, seen)
+	m.showTeam = true
+	m.width, m.height = 100, 24
+	return m
+}
+
+// press sends a key and runs its command tree back through Update.
+func press(t *testing.T, m model, name string) model {
+	t.Helper()
+	msg := tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune(name)}
+	switch name {
+	case "enter":
+		msg = tea.KeyMsg{Type: tea.KeyEnter}
+	case "esc":
+		msg = tea.KeyMsg{Type: tea.KeyEsc}
+	case "tab":
+		msg = tea.KeyMsg{Type: tea.KeyTab}
+	case "down":
+		msg = tea.KeyMsg{Type: tea.KeyDown}
+	case "up":
+		msg = tea.KeyMsg{Type: tea.KeyUp}
+	}
+	next, cmd := m.Update(msg)
+	m = next.(model)
+	for _, reply := range runCmds(cmd) {
+		next, _ = m.Update(reply)
+		m = next.(model)
+	}
+	return m
+}
+
+func TestSeasonPageTabsLoadLazilyAndRender(t *testing.T) {
+	var seen []string
+	m := seasonTabsModel(t, &seen)
+	if view := m.View(); !strings.Contains(view, "[ 1 SCHEDULE ]") || !strings.Contains(view, "2 ROSTER") {
+		t.Fatalf("tab line missing:\n%s", view)
+	}
+	m = press(t, m, "2")
+	rosterRequests := 0
+	for _, u := range seen {
+		if strings.Contains(u, "/roster") {
+			rosterRequests++
+		}
+	}
+	if rosterRequests != 1 || m.teamTab != 1 {
+		t.Fatalf("roster tab: requests %d tab %d", rosterRequests, m.teamTab)
+	}
+	view := m.View()
+	for _, want := range []string{"[ 2 ROSTER ]", "OFFENSE", "#10  QB   Jordan Love", "IR / OUT", "#--", "Utah State", "6 yrs"} {
+		if !strings.Contains(view, want) {
+			t.Fatalf("roster view missing %q:\n%s", want, view)
+		}
+	}
+	m = press(t, m, "3")
+	view = m.View()
+	for _, want := range []string{"[ 3 INJURIES ]", "INJURY REPORT  ·  1 OUT · 1 Q · 1 IR", "OUT   DE   Micah Parsons", "Knee - ACL", "back Nov 25", "Targeting Week 12."} {
+		if !strings.Contains(view, want) {
+			t.Fatalf("injury view missing %q:\n%s", want, view)
+		}
+	}
+	m = press(t, m, "tab")
+	if m.teamTab != 0 {
+		t.Fatalf("tab wraps to schedule, got %d", m.teamTab)
+	}
+	for tab := 0; tab < 3; tab++ {
+		m.teamTab = tab
+		if lines := strings.Count(m.View(), "\n") + 1; lines > m.height {
+			t.Errorf("tab %d has %d lines at height %d", tab, lines, m.height)
+		}
+	}
+}
+
+func TestSeasonPageTabSelectionAndRefresh(t *testing.T) {
+	var seen []string
+	m := seasonTabsModel(t, &seen)
+	m = press(t, press(t, m, "2"), "down")
+	if m.rosterSelected != 1 || m.rosterSelectedLine() != 2 {
+		t.Fatalf("roster selection %d line %d", m.rosterSelected, m.rosterSelectedLine())
+	}
+	seen = nil
+	m = press(t, m, "r")
+	if len(seen) != 1 || !strings.Contains(seen[0], "/roster") {
+		t.Fatalf("r on the roster tab must refetch the roster only: %v", seen)
+	}
+	m = press(t, m, "3")
+	seen = nil
+	m = press(t, m, "r")
+	if len(seen) != 1 || !strings.Contains(seen[0], "/injuries") {
+		t.Fatalf("r on the injuries tab must refetch injuries only: %v", seen)
+	}
+	m, _ = m.openTeamSeason("DET")
+	if m.teamTab != 0 || m.rosterSelected != 0 || m.injurySelected != 0 {
+		t.Fatalf("opening another team must reset tabs: tab %d roster %d injury %d", m.teamTab, m.rosterSelected, m.injurySelected)
+	}
+}
+
+func TestInFlightReplyForAnotherTeamIsStoredNotShown(t *testing.T) {
+	m := seasonTabsModel(t, nil)
+	m, _ = m.setTeamTab(1) // GB roster in flight
+	m, _ = m.openTeamSeason("DET")
+	m, _ = m.setTeamTab(1) // DET roster in flight
+	next, _ := m.Update(rosterMsg{team: "GB", data: roster{Team: "GB", Groups: []rosterGroup{{Title: "OFFENSE", Players: []rosterPlayer{{Name: "Jordan Love"}}}}}})
+	m = next.(model)
+	if entry, ok := m.rosterFor("GB"); !ok || entry.Loading || len(entry.Data.Groups) != 1 {
+		t.Fatalf("GB reply must be stored: %+v", entry)
+	}
+	if view := m.View(); !strings.Contains(view, "Loading roster…") || strings.Contains(view, "Jordan Love") {
+		t.Fatalf("DET page must still be loading:\n%s", view)
+	}
+}
+
+func TestEnterOnRosterOpensPlayerCardWithStats(t *testing.T) {
+	var seen []string
+	m := seasonTabsModel(t, &seen)
+	m = press(t, m, "2")
+	seen = nil
+	m = press(t, m, "enter")
+	if !m.showPlayer || m.player.ID != "4036378" {
+		t.Fatalf("enter on Love: showPlayer %v player %+v", m.showPlayer, m.player)
+	}
+	overviews := 0
+	for _, u := range seen {
+		if strings.Contains(u, "/athletes/4036378/overview") {
+			overviews++
+		}
+	}
+	if overviews != 1 {
+		t.Fatalf("card must fetch the overview once: %v", seen)
+	}
+	view := m.View()
+	for _, want := range []string{"◆  PLAYER", "Jordan Love", "#10  QB  ·  Green Bay Packers", `27 yrs  ·  6' 4"  ·  219 lbs  ·  6th season  ·  Utah State`, "SEASON STATS", "PASSING", "CMP", "1,504", "RUSHING"} {
+		if !strings.Contains(view, want) {
+			t.Fatalf("card missing %q:\n%s", want, view)
+		}
+	}
+	for _, size := range [][2]int{{80, 24}, {100, 30}} {
+		m.width, m.height = size[0], size[1]
+		if lines := strings.Count(m.View(), "\n") + 1; lines > size[1] {
+			t.Errorf("card at %dx%d has %d lines", size[0], size[1], lines)
+		}
+	}
+	m = press(t, m, "esc")
+	if m.showPlayer || !m.showTeam || m.teamTab != tabRoster {
+		t.Fatalf("esc must return to the roster tab: player %v team %v tab %d", m.showPlayer, m.showTeam, m.teamTab)
+	}
+}
+
+func TestEnterOnInjuryRowShowsInjuryLine(t *testing.T) {
+	m := seasonTabsModel(t, nil)
+	m = press(t, press(t, m, "3"), "enter")
+	if !m.showPlayer || m.player.Name != "Micah Parsons" {
+		t.Fatalf("enter on Parsons: %+v", m.player)
+	}
+	view := m.View()
+	for _, want := range []string{"OUT  ·  Knee - ACL  ·  back Nov 25", "Targeting Week 12.", "#--  DE  ·  Green Bay Packers"} {
+		if !strings.Contains(view, want) {
+			t.Fatalf("injury card missing %q:\n%s", want, view)
+		}
+	}
+	m = press(t, m, "esc")
+	m.injurySelected = 2 // No Link, no athlete ID
+	m = press(t, m, "enter")
+	if m.showPlayer {
+		t.Fatal("a row without an athlete ID must not open a card")
+	}
+}
+
+func TestPlayerCardNoStatsAndError(t *testing.T) {
+	m := seasonTabsModel(t, nil)
+	m = press(t, press(t, m, "2"), "enter")
+	next, _ := m.Update(playerMsg{id: "4036378", stats: playerStats{ID: "4036378"}})
+	m = next.(model)
+	if !strings.Contains(m.View(), "No season stats yet.") {
+		t.Fatalf("empty stats:\n%s", m.View())
+	}
+	next, _ = m.Update(playerMsg{id: "4036378", err: errors.New("boom")})
+	m = next.(model)
+	if !strings.Contains(m.View(), "Stats: boom") {
+		t.Fatalf("error:\n%s", m.View())
+	}
+	var seen []string
+	m.api = teamDataClient(t, &seen)
+	m = press(t, m, "r")
+	if len(seen) != 1 || !strings.Contains(seen[0], "/overview") {
+		t.Fatalf("r must refetch the overview: %v", seen)
+	}
+	if !strings.Contains(m.View(), "PASSING") {
+		t.Fatal("refetched stats must render")
+	}
+}
+
+// injuriesByTeamClient serves GB's injury report and an empty one for everyone else.
+func injuriesByTeamClient(t *testing.T, seen *[]string) *client {
+	t.Helper()
+	return &client{http: &http.Client{Transport: roundTripFunc(func(req *http.Request) (*http.Response, error) {
+		if seen != nil {
+			*seen = append(*seen, req.URL.Path+"?"+req.URL.RawQuery)
+		}
+		body := `{}`
+		if strings.HasSuffix(req.URL.Path, "/injuries") {
+			body = `{"injuries":[]}`
+			if req.URL.Query().Get("team") == "gb" {
+				body = injuriesJSON
+			}
+		}
+		return &http.Response{StatusCode: 200, Body: io.NopCloser(strings.NewReader(body)), Header: make(http.Header)}, nil
+	})}}
+}
+
+func injuryRequests(seen []string) []string {
+	var out []string
+	for _, u := range seen {
+		if strings.Contains(u, "/injuries") {
+			out = append(out, u[strings.Index(u, "team=")+5:])
+		}
+	}
+	return out
+}
+
+func boardDated(t *testing.T, when time.Time) scoreboard {
+	t.Helper()
+	b := boardAt(t, "1", "pre", "", "")
+	b.Events[0].Date = when.UTC().Format("2006-01-02T15:04Z")
+	return b
+}
+
+func TestGameCenterInjurySectionWithinWindow(t *testing.T) {
+	var seen []string
+	m := favoriteSeasonModel(t)
+	m.api = injuriesByTeamClient(t, &seen)
+	m.board = boardDated(t, time.Now().Add(-time.Hour))
+	m.width, m.height = 100, 36
+	m = press(t, m, "enter")
+	if !m.showDetail {
+		t.Fatal("enter must open the game center")
+	}
+	got := injuryRequests(seen)
+	sort.Strings(got)
+	if strings.Join(got, " ") != "car gb" {
+		t.Fatalf("game center must request both teams' reports once: %v", got)
+	}
+	m = press(t, m, "4")
+	view := m.View()
+	for _, want := range []string{"INJURY REPORT", "OUT  DE  Micah Parsons (Knee - ACL)", "No Out, Doubtful or Questionable players."} {
+		if !strings.Contains(view, want) {
+			t.Fatalf("center tab missing %q:\n%s", want, view)
+		}
+	}
+	if strings.Index(view, "CAR") > strings.Index(view, "No Out, Doubtful") {
+		t.Fatalf("away team must come first:\n%s", view)
+	}
+	var many []injury
+	for i := 0; i < 9; i++ {
+		many = append(many, injury{Name: fmt.Sprintf("Player %d", i), Status: "Out", Position: "WR"})
+	}
+	m.injuryReports["GB"] = injuryEntry{Report: injuryReport{Team: "GB", Entries: many}}
+	if view := m.View(); !strings.Contains(view, "+1 more") || strings.Contains(view, "Player 8") {
+		t.Fatalf("cap at 8 rows:\n%s", view)
+	}
+
+	seen = nil
+	old := favoriteSeasonModel(t)
+	old.api = injuriesByTeamClient(t, &seen)
+	old.board = boardDated(t, time.Now().Add(-30*24*time.Hour))
+	old.width, old.height = 100, 36
+	old = press(t, press(t, old, "enter"), "4")
+	if len(injuryRequests(seen)) != 0 || strings.Contains(old.View(), "INJURY REPORT") {
+		t.Fatalf("old game must not fetch or show injuries: %v\n%s", injuryRequests(seen), old.View())
+	}
+}
+
+func TestSpotlightShowsInjuryCount(t *testing.T) {
+	m := dashboardModel(t)
+	m.width, m.height = 120, 36
+	report, err := jsonClient(t, func(*http.Request) {}, injuriesJSON).injuries(context.Background(), "GB")
+	if err != nil {
+		t.Fatal(err)
+	}
+	m = m.applyInjuries(injuriesMsg{team: "GB", report: report})
+	if view := m.View(); !strings.Contains(view, "INJURIES  1 OUT · 1 Q") {
+		t.Fatalf("spotlight must count game-day injuries:\n%s", view)
+	}
+	m.injuryReports["GB"] = injuryEntry{Loading: true}
+	if strings.Contains(m.View(), "INJURIES") {
+		t.Fatal("no injury line while loading")
+	}
+	m.api = injuriesByTeamClient(t, nil)
+	found := false
+	for _, msg := range runCmds(tea.Batch(m.initialLoads()...)) {
+		if reply, ok := msg.(injuriesMsg); ok && reply.team == "GB" {
+			found = true
+		}
+	}
+	if !found {
+		t.Fatal("startup must request the favorite's injury report")
+	}
+}
+
+func TestStoreErrorsAndTeamNamesAreSanitized(t *testing.T) {
+	m := model{}
+	m = m.applyPlayer(playerMsg{id: "1", err: errors.New("bad\x1b[31m\x07")})
+	m = m.applyInjuries(injuriesMsg{team: "GB", err: errors.New("x\x1b[0m")})
+	m = m.applyRoster(rosterMsg{team: "GB", err: errors.New("y\r\n")})
+	p, _ := m.playerFor("1")
+	i, _ := m.injuriesFor("GB")
+	r, _ := m.rosterFor("GB")
+	if p.Error != "bad[31m" || i.Error != "x[0m" || r.Error != "y" {
+		t.Fatalf("errors must be sanitized: %q %q %q", p.Error, i.Error, r.Error)
+	}
+	body := strings.Replace(scheduleJSON("GB"), "Green Bay Packers", "Green\\u001b[31m Bay", 1)
+	s, err := jsonClient(t, func(*http.Request) {}, body).teamSchedule(context.Background(), "GB", 2026)
+	if err != nil || s.Team.DisplayName != "Green[31m Bay" {
+		t.Fatalf("team name must be sanitized: %q err %v", s.Team.DisplayName, err)
+	}
+}
+
+func TestRosterUnknownGroupKeySanitized(t *testing.T) {
+	body := `{"athletes":[{"position":"weird\u001b[31m\u0007\r\nkey","items":[{"id":"9","displayName":"Some One","position":{"abbreviation":"K"}}]}]}`
+	r, err := jsonClient(t, func(*http.Request) {}, body).roster(context.Background(), "GB")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(r.Groups) != 1 || r.Groups[0].Title != "WEIRD[31MKEY" {
+		t.Fatalf("title must be sanitized and upper-cased: %q", r.Groups[0].Title)
+	}
+}
+
+func TestFootersAndHelpMentionTabs(t *testing.T) {
+	m := seasonTabsModel(t, nil)
+	m.width, m.height = 120, 30
+	if view := m.View(); !strings.Contains(view, "1/2/3 tabs") {
+		t.Fatal("season page footer must mention 1/2/3 tabs")
+	}
+	m.width = 60
+	if view := m.View(); !strings.Contains(view, "1/2/3") {
+		t.Fatal("narrow season page footer must mention 1/2/3")
+	}
+	m.width, m.showHelp = 120, true
+	if view := m.View(); !strings.Contains(view, "1/2/3 on a season page") {
+		t.Fatal("help must mention the season page tabs")
+	}
+}
+
+// Fix-pass tests from the whole-branch review.
+
+func bigRosterJSON(n int) string {
+	var items []string
+	for i := 0; i < n; i++ {
+		items = append(items, fmt.Sprintf(`{"id":"%d","displayName":"Player Number %d","jersey":"%d","position":{"abbreviation":"WR"},"age":25,"displayHeight":"6' 1\"","displayWeight":"200 lbs","experience":{"years":%d},"college":{"shortName":"Wake Forest"},"status":{"name":"Active"},"injuries":[{"status":"Out"}]}`, i, i, i, i%3))
+	}
+	return `{"athletes":[{"position":"offense","items":[` + strings.Join(items, ",") + `]}]}`
+}
+
+func TestRosterRowsFitTheFrameAndKeepBadges(t *testing.T) {
+	m := seasonTabsModel(t, nil)
+	m.width, m.height = 100, 30
+	m = press(t, m, "2")
+	m = m.applyRoster(rosterMsg{team: "GB", data: mustRoster(t, bigRosterJSON(3))})
+	view := m.View()
+	if !strings.Contains(view, "Wake Forest  OUT") {
+		t.Fatalf("badge must survive the frame width at 100 columns:\n%s", view)
+	}
+	for _, line := range strings.Split(view, "\n") {
+		if w := lipglossWidth(line); w > 100 {
+			t.Fatalf("line wider than the terminal (%d): %q", w, line)
+		}
+	}
+}
+
+func TestLongTabsFitTheTerminal(t *testing.T) {
+	for _, size := range [][2]int{{80, 24}, {100, 30}, {60, 20}} {
+		m := seasonTabsModel(t, nil)
+		m.width, m.height = size[0], size[1]
+		m = press(t, m, "2")
+		m = m.applyRoster(rosterMsg{team: "GB", data: mustRoster(t, bigRosterJSON(40))})
+		if lines := strings.Count(m.View(), "\n") + 1; lines > size[1] {
+			t.Errorf("roster tab at %dx%d has %d lines", size[0], size[1], lines)
+		}
+		m.teamTab = tabSchedule
+		if lines := strings.Count(m.View(), "\n") + 1; lines > size[1] {
+			t.Errorf("schedule tab at %dx%d has %d lines", size[0], size[1], lines)
+		}
+	}
+}
+
+func mustRoster(t *testing.T, body string) roster {
+	t.Helper()
+	r, err := jsonClient(t, func(*http.Request) {}, body).roster(context.Background(), "GB")
+	if err != nil {
+		t.Fatal(err)
+	}
+	return r
+}
+
+func TestSpotlightInjuryLineYieldsOnShortTerminals(t *testing.T) {
+	m := model{season: 2026, week: 9, seasonType: 2, favorite: "GB", teamSeason: 2026, teamData: decodeSchedule(t, "GB"), width: 80, board: boardAt(t, "1", "in", "19", "20")}
+	m, _ = m.recordScoring(scoringEvents(boardAt(t, "1", "in", "19", "13"), m.board, "GB"))
+	m, _ = m.recordScoring(scoringEvents(boardAt(t, "1", "in", "12", "13"), boardAt(t, "1", "in", "19", "13"), "GB"))
+	report, _ := jsonClient(t, func(*http.Request) {}, injuriesJSON).injuries(context.Background(), "GB")
+	m = m.applyInjuries(injuriesMsg{team: "GB", report: report})
+	for _, height := range []int{18, 20, 24} {
+		m.height = height
+		if lines := strings.Count(m.View(), "\n") + 1; lines > height {
+			t.Errorf("dashboard at 80x%d has %d lines", height, lines)
+		}
+	}
+	m.height = 30
+	if !strings.Contains(m.View(), "INJURIES  1 OUT · 1 Q") {
+		t.Fatal("injury line must show when there is room")
+	}
+}
+
+func TestCardFromRosterRowShowsInjuryStatus(t *testing.T) {
+	var seen []string
+	m := seasonTabsModel(t, &seen)
+	m = press(t, m, "2")
+	m = m.applyRoster(rosterMsg{team: "GB", data: mustRoster(t, bigRosterJSON(2))})
+	seen = nil
+	m = press(t, m, "enter")
+	if !m.showPlayer {
+		t.Fatal("card must open")
+	}
+	if len(injuryRequests(seen)) != 1 {
+		t.Fatalf("opening a card must request the team's injury report: %v", seen)
+	}
+	if view := m.View(); !strings.Contains(view, "OUT") {
+		t.Fatalf("card must show the roster row's injury status:\n%s", view)
+	}
+}
+
+func TestSelectionClampsAfterShorterRefresh(t *testing.T) {
+	m := seasonTabsModel(t, nil)
+	m = press(t, m, "2")
+	m = m.applyRoster(rosterMsg{team: "GB", data: mustRoster(t, bigRosterJSON(5))})
+	m.rosterSelected = 4
+	m = m.applyRoster(rosterMsg{team: "GB", data: mustRoster(t, bigRosterJSON(2))})
+	if !strings.Contains(m.View(), "Player Number 1") {
+		t.Fatal("roster must render")
+	}
+	m = press(t, m, "enter")
+	if !m.showPlayer || m.player.Name != "Player Number 1" {
+		t.Fatalf("enter must open the last row when the selection is past the end: %+v", m.player)
+	}
+}
+
+func TestResizeClampsNewScrolls(t *testing.T) {
+	m := seasonTabsModel(t, nil)
+	m = press(t, m, "2")
+	m = m.applyRoster(rosterMsg{team: "GB", data: mustRoster(t, bigRosterJSON(40))})
+	m.rosterScroll, m.teamScroll, m.playerScroll = 30, 30, 30
+	next, _ := m.Update(tea.WindowSizeMsg{Width: 100, Height: 60})
+	m = next.(model)
+	if m.rosterScroll != 0 || m.playerScroll != 0 {
+		t.Fatalf("scrolls must clamp on resize: roster %d player %d", m.rosterScroll, m.playerScroll)
+	}
+	if m.teamScroll != 0 {
+		t.Fatalf("schedule scroll must clamp against the schedule tab, got %d", m.teamScroll)
+	}
+}
+
+func TestGameCenterTeamHeaderSanitized(t *testing.T) {
+	m := favoriteSeasonModel(t)
+	m.board = boardDated(t, time.Now().Add(-time.Hour))
+	m.board.Events[0].Competitions[0].Competitors[0].Team.Abbreviation = "CAR\x1b[31m"
+	m.detailID, m.detailGame, m.showDetail, m.detailTab = "1", m.board.Events[0], true, 3
+	m.width, m.height = 100, 36
+	if strings.Contains(m.View(), "\x1b[31mCAR\x1b[31m") || strings.Contains(stripANSI(m.View()), "CAR[31m") == false {
+		t.Fatalf("team header must be sanitized:\n%s", m.View())
+	}
+}
+
+func TestOneYearLabel(t *testing.T) {
+	if got := experienceLabel(rosterPlayer{Years: 1, HasYears: true}); got != "1 yr" {
+		t.Fatalf("got %q", got)
+	}
+}
+
+var ansiPattern = regexp.MustCompile("\x1b\\[[0-9;]*m")
+
+func stripANSI(s string) string { return ansiPattern.ReplaceAllString(s, "") }
+
+func lipglossWidth(line string) int { return lipgloss.Width(line) }
