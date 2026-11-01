@@ -62,3 +62,15 @@ _Avoid_: Prompt segment, status counter
 **Ticker**:
 The in-place scoreboard redrawn in a side pane by `td -status -watch`.
 _Avoid_: Watch mode, feed
+
+**Injury report**:
+One team's list of players ESPN marks as anything other than active: status, position, body part, expected return, and the latest note. Shown on the season page, in the game center, and counted on the spotlight panel.
+_Avoid_: Injuries list, injury list, IR list
+
+**Roster**:
+One team's players grouped as offense, defense, special teams, IR/out, practice squad, and suspended, with jersey, position, age, size, experience, and college.
+_Avoid_: Depth chart, squad, lineup
+
+**Player card**:
+The full-screen view of one player: bio, injury status, and this season's stat lines.
+_Avoid_: Player page, player view, athlete view
