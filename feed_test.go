@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"strings"
 	"sync/atomic"
@@ -207,5 +208,70 @@ func TestWeekChangeClearsFeed(t *testing.T) {
 	m = next.(model)
 	if m.feed != nil || m.feedPending != nil {
 		t.Fatalf("week change must clear the feed: %+v %+v", m.feed, m.feedPending)
+	}
+}
+
+func sampleFeed(n int) []scoringEvent {
+	var feed []scoringEvent
+	for i := 0; i < n; i++ {
+		feed = append(feed, scoringEvent{GameID: "1", Team: "GB", Points: 3, Away: "CAR", Home: "GB", AwayScore: 19, HomeScore: 20 + i, Period: 4, Clock: fmt.Sprintf("%d:%02d", 14-i, 7*i%60), Favorite: i%2 == 0})
+	}
+	return feed
+}
+
+func TestWideDashboardFeedPanel(t *testing.T) {
+	m := liveBoardModel(112, 34, false)
+	m.favorite = "GB"
+	m.feed = sampleFeed(8)
+	view := m.View()
+	if !strings.Contains(view, "SCORING FEED") || strings.Contains(view, "QUICK KEYS") {
+		t.Fatalf("feed panel missing or quick keys still present:\n%s", view)
+	}
+	for i := 0; i < 6; i++ {
+		if !strings.Contains(view, m.feed[i].Clock) {
+			t.Fatalf("entry %d (%s) missing:\n%s", i, m.feed[i].Clock, view)
+		}
+	}
+	if strings.Contains(view, m.feed[6].Clock) {
+		t.Fatalf("more than 6 entries shown:\n%s", view)
+	}
+	if n := strings.Count(view, "\n") + 1; n > 34 {
+		t.Fatalf("wide dashboard overflowed: %d lines", n)
+	}
+	m.feed = nil
+	if view := m.View(); !strings.Contains(view, "No scores yet this session") {
+		t.Fatalf("empty feed state missing:\n%s", view)
+	}
+}
+
+func TestDashboardFitsWithLiveFavoriteAndFeed(t *testing.T) {
+	for _, size := range [][2]int{{80, 24}, {100, 30}, {112, 34}, {150, 36}} {
+		m := liveBoardModel(size[0], size[1], false)
+		m.favorite = "GB"
+		m.board.Events[0].Competitions[0].Situation.LastPlay.Text = strings.Repeat("word ", 80)
+		m.feed = sampleFeed(8)
+		view := m.View()
+		if n := strings.Count(view, "\n") + 1; n > size[1] {
+			t.Fatalf("%dx%d overflowed: %d lines\n%s", size[0], size[1], n, view)
+		}
+		if !strings.Contains(view, "›") {
+			t.Fatalf("%dx%d lost the game list:\n%s", size[0], size[1], view)
+		}
+	}
+}
+
+func TestNarrowDashboardFeedLine(t *testing.T) {
+	m := liveBoardModel(90, 24, false)
+	m.feed = sampleFeed(2)
+	view := m.View()
+	if !strings.Contains(view, "⚡ "+m.feed[0].feedLine()[:12]) || strings.Contains(view, m.feed[1].Clock) {
+		t.Fatalf("narrow feed line wrong:\n%s", view)
+	}
+	if n := strings.Count(view, "\n") + 1; n > 24 {
+		t.Fatalf("narrow dashboard overflowed: %d lines", n)
+	}
+	m.feed = nil
+	if view := m.View(); strings.Contains(view, "⚡") {
+		t.Fatalf("empty feed must not draw a line:\n%s", view)
 	}
 }
