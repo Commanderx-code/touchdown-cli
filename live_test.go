@@ -166,3 +166,16 @@ func TestSpotlightShowsLiveSituation(t *testing.T) {
 		t.Fatalf("dashboard overflowed with long play: %d lines", n)
 	}
 }
+
+func TestLiveTextStripsControlCharacters(t *testing.T) {
+	three := 3
+	g := liveGame("8", 3, 7, "3rd & 7\x1b[31m at CAR 22", true, &three, &three, "J.Love\x1b]52;c;evil\x07 pass\r\nto C.Watson")
+	for _, got := range []string{situationText(g), latestPlayText(g), timeoutsText(g)} {
+		if strings.ContainsAny(got, "\x1b\x07\r\n") {
+			t.Fatalf("control characters leaked: %q", got)
+		}
+	}
+	if got := latestPlayText(g); got != "J.Love]52;c;evil pass to C.Watson" {
+		t.Fatalf("latest play: %q", got)
+	}
+}

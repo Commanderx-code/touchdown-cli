@@ -37,7 +37,7 @@ func situationText(g game) string {
 	if situation.IsRedZone {
 		text += "  ·  RED ZONE"
 	}
-	return text
+	return plainText(text)
 }
 
 // timeoutsText shows timeouts remaining for both teams, away first, as
@@ -51,7 +51,7 @@ func timeoutsText(g game) string {
 		return ""
 	}
 	away, home := g.sides()
-	return fmt.Sprintf("%s TO %s   %s TO %s", away.Team.Abbreviation, timeoutGlyphs(*situation.AwayTimeouts), home.Team.Abbreviation, timeoutGlyphs(*situation.HomeTimeouts))
+	return plainText(fmt.Sprintf("%s TO %s   %s TO %s", away.Team.Abbreviation, timeoutGlyphs(*situation.AwayTimeouts), home.Team.Abbreviation, timeoutGlyphs(*situation.HomeTimeouts)))
 }
 
 func timeoutGlyphs(remaining int) string {
@@ -64,7 +64,7 @@ func latestPlayText(g game) string {
 	if len(g.Competitions) == 0 {
 		return ""
 	}
-	return strings.Join(strings.Fields(g.Competitions[0].Situation.LastPlay.Text), " ")
+	return plainText(strings.Join(strings.Fields(g.Competitions[0].Situation.LastPlay.Text), " "))
 }
 
 func (m model) liveContextLines() []string {
