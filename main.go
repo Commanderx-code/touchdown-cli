@@ -5,6 +5,7 @@ import (
 	"flag"
 	"fmt"
 	"os"
+	"slices"
 	"strconv"
 	"time"
 
@@ -104,6 +105,7 @@ type model struct {
 	updated                  time.Time
 	width, height            int
 	notify, notifyAll        bool
+	followed                 []string
 	compact                  bool
 	feed                     []scoringEvent
 	feedPending              map[string]int
@@ -180,14 +182,24 @@ func (m model) teamScheduleDue() bool {
 	return m.teamUpdated.IsZero() || time.Since(m.teamUpdated) > 5*time.Minute
 }
 
+// watching reports whether the game involves the favorite or a followed team.
+func (m model) watching(g game) bool {
+	away, home := g.sides()
+	for _, side := range []string{away.Team.Abbreviation, home.Team.Abbreviation} {
+		if side == m.favorite || slices.Contains(m.followed, side) {
+			return true
+		}
+	}
+	return false
+}
+
 func (m model) visibleGames() []game {
 	if !m.favoritesOnly && !m.liveOnly {
 		return m.board.Events
 	}
 	var games []game
 	for _, g := range m.board.Events {
-		away, home := g.sides()
-		if (m.liveOnly && g.Status.Type.State == "in") || (m.favoritesOnly && m.favorite != "" && (away.Team.Abbreviation == m.favorite || home.Team.Abbreviation == m.favorite)) {
+		if (m.liveOnly && g.Status.Type.State == "in") || (m.favoritesOnly && m.favorite != "" && m.watching(g)) {
 			games = append(games, g)
 		}
 	}
@@ -371,7 +383,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		var feedCmds []tea.Cmd
 		if msg.board.CachedAt.IsZero() && m.board.CachedAt.IsZero() && len(m.board.Events) > 0 {
 			if m.notify {
-				alerts = scoreAlerts(m.board, msg.board, m.favorite, m.notifyAll)
+				alerts = scoreAlerts(m.board, msg.board, m.favorite, m.notifyAll, m.followed...)
 			}
 			m, feedCmds = m.recordScoring(scoringEvents(m.board, msg.board, m.favorite))
 		}
@@ -997,7 +1009,8 @@ func main() {
 	watch := flag.Bool("watch", false, "with -status, redraw a scoreboard ticker every 30 seconds")
 	split := flag.Bool("split", false, "with -status, open the ticker in a new multiplexer pane")
 	refresh := flag.Bool("refresh", false, "refresh the status cache and exit (used by -status)")
-	live := flag.Bool("live", false, "with -status, print the line only while the favorite's game is in progress")
+	live := flag.Bool("live", false, "with -status, print the line only while the favorite's or a followed game is in progress")
+	follow := flag.String("follow", "", `save followed teams as a comma-separated list (e.g. KC,DET) and exit; "" clears them`)
 	flag.Parse()
 	if *setFavorite != "" {
 		team, err := saveFavorite(*configPath, *setFavorite)
@@ -1022,8 +1035,20 @@ func main() {
 		fmt.Fprintln(os.Stderr, err)
 		os.Exit(2)
 	}
+	if flagWasSet(flag.CommandLine, "follow") {
+		teams, err := parseFollowed(*follow, config.FavoriteTeam)
+		if err == nil {
+			err = saveFollowed(*configPath, teams)
+		}
+		if err != nil {
+			fmt.Fprintln(os.Stderr, err)
+			os.Exit(2)
+		}
+		fmt.Printf("Followed teams: %s\nConfig: %s\n", followedLabel(teams), *configPath)
+		return
+	}
 	if *showConfig {
-		fmt.Printf("Config: %s\nFavorite team: %s %s (%s)\nTheme: %s\nGame key: g\nSeason key: p\n", *configPath, team.city, team.nickname, team.abbreviation, config.Theme)
+		fmt.Printf("Config: %s\nFavorite team: %s %s (%s)\nFollowed teams: %s\nTheme: %s\nGame key: g\nSeason key: p\n", *configPath, team.city, team.nickname, team.abbreviation, followedLabel(config.FollowedTeams), config.Theme)
 		return
 	}
 	chosenTheme := config.Theme
@@ -1058,7 +1083,7 @@ func main() {
 		}
 		if *watch && !*split {
 			ctx, stop := watchContext()
-			code := runWatch(ctx, api, team.abbreviation, *season, *week, *seasonType, os.Stdout, 30*time.Second)
+			code := runWatch(ctx, api, team.abbreviation, *season, *week, *seasonType, os.Stdout, 30*time.Second, watchOptions{followed: config.FollowedTeams, notify: *notify || *notifyAll, notifyAll: *notifyAll})
 			stop()
 			os.Exit(code)
 		}
@@ -1070,7 +1095,7 @@ func main() {
 		if *split {
 			os.Exit(openSplit(detectHost(os.Getenv), self, forwardedFlags(flag.CommandLine), os.Stderr))
 		}
-		os.Exit(runStatusOnce(api.cacheDir, team.abbreviation, *season, *week, *seasonType, time.Now(), self, forwardedFlags(flag.CommandLine), os.Stdout, *live))
+		os.Exit(runStatusOnce(api.cacheDir, team.abbreviation, *season, *week, *seasonType, time.Now(), self, forwardedFlags(flag.CommandLine), os.Stdout, *live, config.FollowedTeams...))
 	}
 	if *once {
 		board, err := api.scoreboard(context.Background(), *season, *week, *seasonType)
@@ -1091,7 +1116,7 @@ func main() {
 		}
 		return
 	}
-	m := model{api: api, season: *season, week: *week, seasonType: *seasonType, loading: true, favorite: team.abbreviation, showHome: true, compact: *compact, notify: *notify || *notifyAll, notifyAll: *notifyAll, theme: chosenTheme, configPath: *configPath}.markStartupLoads()
+	m := model{api: api, season: *season, week: *week, seasonType: *seasonType, loading: true, favorite: team.abbreviation, showHome: true, compact: *compact, notify: *notify || *notifyAll, notifyAll: *notifyAll, theme: chosenTheme, configPath: *configPath, followed: config.FollowedTeams}.markStartupLoads()
 	if _, err := tea.NewProgram(m, tea.WithAltScreen(), tea.WithMouseCellMotion()).Run(); err != nil {
 		fmt.Fprintln(os.Stderr, err)
 		os.Exit(1)

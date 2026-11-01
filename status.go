@@ -59,6 +59,34 @@ func statusLine(board scoreboard, favorite string, now time.Time, cachedAt time.
 	return plainText(line)
 }
 
+// statusSummary is the status line for the favorite and every followed team,
+// favorite first, joined with " | ". A game two of them share appears once.
+// liveOnly keeps only games in progress. "(cached)" goes at the very end.
+func statusSummary(board scoreboard, favorite string, followed []string, now, cachedAt time.Time, liveOnly bool) string {
+	const cached = " (cached)"
+	var parts []string
+	seen := map[string]bool{}
+	marked := false
+	for _, team := range append([]string{favorite}, followed...) {
+		g, ok := favoriteGame(board, team)
+		if !ok || seen[g.ID] || liveOnly && g.Status.Type.State != "in" {
+			continue
+		}
+		seen[g.ID] = true
+		line := statusLine(board, team, now, cachedAt)
+		if strings.HasSuffix(line, cached) {
+			marked = true
+			line = strings.TrimSuffix(line, cached)
+		}
+		parts = append(parts, line)
+	}
+	summary := strings.Join(parts, " | ")
+	if marked {
+		summary += cached
+	}
+	return summary
+}
+
 // plainText drops control runes from text that came from the network, so
 // nothing ESPN sends can inject escape sequences into a prompt or pane.
 func plainText(s string) string {
@@ -149,8 +177,11 @@ func validateStatusFlags(status, watch, split, refresh, once, notify, compact bo
 	if !status && (watch || split || refresh) {
 		return errors.New("-watch, -split and -refresh require -status")
 	}
-	if status && (once || notify || compact) {
-		return errors.New("-status cannot be combined with -once, -notify, -notify-all or -compact")
+	if status && (once || compact) {
+		return errors.New("-status cannot be combined with -once or -compact")
+	}
+	if status && notify && !watch && !split {
+		return errors.New("-status needs -watch or -split with -notify or -notify-all")
 	}
 	return nil
 }

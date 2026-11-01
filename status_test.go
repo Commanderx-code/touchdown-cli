@@ -275,7 +275,7 @@ func TestRunWatchStopsOnCancel(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	var out strings.Builder
 	go func() { time.Sleep(35 * time.Millisecond); cancel() }()
-	if code := runWatch(ctx, api, "GB", 0, 0, 2, &out, 10*time.Millisecond); code != 0 {
+	if code := runWatch(ctx, api, "GB", 0, 0, 2, &out, 10*time.Millisecond, watchOptions{}); code != 0 {
 		t.Fatal(code)
 	}
 	if n := strings.Count(out.String(), "\033[H\033[2J"); n < 2 {

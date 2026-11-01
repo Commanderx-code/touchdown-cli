@@ -113,9 +113,11 @@ td -season 2026 -week 1 -type 3  # Open a postseason week
 td -compact                      # Use the compact layout
 td -notify                       # Alert for favorite-team scores and finals
 td -notify-all                   # Alert for all scores and finals
+td -follow KC,DET                # Follow other teams; -follow "" clears them
 td -status                       # Print one line for a shell prompt (see below)
-td -status -live                 # Same, but only while the game is in progress
+td -status -live                 # Same, but only while a game is in progress
 td -status -watch                # Redraw a scoreboard ticker every 30 seconds
+td -status -watch -notify        # Same, with desktop alerts from the background
 td -status -split                # Open the ticker in a new multiplexer pane
 ```
 
@@ -135,7 +137,11 @@ GB @ DET · Sun 1:00 PM
 
 The score always reads favorite first. `BALL` means your team has possession and `RZ` that it is in the red zone. On a bye week the line is empty, so prompt segments disappear. It never waits on the network: it prints from the local cache and, when that is older than 30 seconds, starts a short background refresh so the next prompt is current. The first run after install prints nothing until that refresh lands. Data older than five minutes is marked `(cached)`.
 
-`td -status -live` prints the line only while the game is in progress, so a prompt segment appears during games and disappears otherwise.
+`td -status -live` prints the line only while a game is in progress, so a prompt segment appears during games and disappears otherwise.
+
+Followed teams join the line after your favorite, separated by ` | `. They are also pinned to the top of the ticker, included in score alerts, and shown by the favorite filter. Press Space in settings to follow or unfollow the highlighted team.
+
+`-notify` and `-notify-all` work with `-status -watch` and `-status -split`, so a ticker pane can send alerts without the full app open. Alerts use `notify-send`, which means Linux only.
 
 For [Starship](https://starship.rs), add to `~/.config/starship.toml`:
 
