@@ -30,3 +30,76 @@ func TestSummaryParsesScoringType(t *testing.T) {
 		t.Fatalf("%+v", detail.ScoringPlays[0])
 	}
 }
+
+func liveGame(possession string, down, distance int, ddText string, rz bool, away, home *int, last string) game {
+	g := game{ID: "1", Date: "2026-11-01T21:25Z",
+		Status: gameStatus{Type: statusType{State: "in", ShortDetail: "2:14 - 4th", Description: "In Progress"}, DisplayClock: "2:14", Period: 4},
+		Competitions: []competition{{
+			Situation: gameSituation{Possession: possession, Down: down, Distance: distance, DownDistanceText: ddText, IsRedZone: rz, HomeTimeouts: home, AwayTimeouts: away},
+			Competitors: []competitor{
+				{HomeAway: "away", Score: "19", Team: teamRef{ID: "29", Abbreviation: "CAR", Name: "Panthers", DisplayName: "Carolina Panthers"}},
+				{HomeAway: "home", Score: "27", Team: teamRef{ID: "8", Abbreviation: "GB", Name: "Packers", DisplayName: "Green Bay Packers"}},
+			}}}}
+	g.Competitions[0].Venue.FullName = "Lambeau Field"
+	g.Competitions[0].Situation.LastPlay.Text = last
+	return g
+}
+
+func TestSituationText(t *testing.T) {
+	three, two := 3, 2
+	cases := []struct {
+		name string
+		g    game
+		want string
+	}{
+		{"espn text", liveGame("8", 3, 7, "3rd & 7 at CAR 22", false, &two, &three, ""), "GB ball  3rd & 7 at CAR 22"},
+		{"built text", liveGame("8", 3, 7, "", false, nil, nil, ""), "GB ball  3rd & 7"},
+		{"goal line", liveGame("29", 1, 0, "", true, nil, nil, ""), "CAR ball  1st & GOAL  ·  RED ZONE"},
+		{"kickoff no down", liveGame("8", 0, 0, "", false, nil, nil, ""), "GB ball"},
+		{"no possession", liveGame("", 0, 0, "", false, nil, nil, ""), ""},
+	}
+	for _, tc := range cases {
+		if got := situationText(tc.g); got != tc.want {
+			t.Errorf("%s: got %q want %q", tc.name, got, tc.want)
+		}
+	}
+	final := liveGame("8", 3, 7, "3rd & 7", false, nil, nil, "")
+	final.Status.Type.State = "post"
+	if got := situationText(final); got != "" {
+		t.Errorf("final game must have no situation, got %q", got)
+	}
+}
+
+func TestTimeoutsText(t *testing.T) {
+	three, two, zero := 3, 2, 0
+	cases := []struct {
+		away, home *int
+		want       string
+	}{
+		{&two, &three, "CAR TO ●●○   GB TO ●●●"},
+		{&zero, &three, "CAR TO ○○○   GB TO ●●●"},
+		{nil, &three, ""},
+		{nil, nil, ""},
+	}
+	for _, tc := range cases {
+		if got := timeoutsText(liveGame("8", 1, 10, "", false, tc.away, tc.home, "")); got != tc.want {
+			t.Errorf("got %q want %q", got, tc.want)
+		}
+	}
+}
+
+func TestLiveContextLinesOrder(t *testing.T) {
+	three, two := 3, 2
+	g := liveGame("8", 3, 7, "3rd & 7 at CAR 22", true, &two, &three, "J.Love  pass   to C.Watson")
+	m := model{board: scoreboard{Events: []game{g}}, detailID: "1", detailGame: g, showDetail: true}
+	want := []string{"GB ball  3rd & 7 at CAR 22  ·  RED ZONE", "CAR TO ●●○   GB TO ●●●", "LATEST  J.Love pass to C.Watson"}
+	got := m.liveContextLines()
+	if len(got) != len(want) {
+		t.Fatalf("got %q want %q", got, want)
+	}
+	for i := range want {
+		if got[i] != want[i] {
+			t.Errorf("line %d: got %q want %q", i, got[i], want[i])
+		}
+	}
+}

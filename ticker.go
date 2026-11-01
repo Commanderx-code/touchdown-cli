@@ -74,7 +74,7 @@ func liveSuffix(g game) string {
 		if situation.Distance == 0 {
 			distance = "GOAL"
 		}
-		parts = append(parts, fmt.Sprintf("%s & %s", strings.ToLower(downLabel(situation.Down)), distance))
+		parts = append(parts, fmt.Sprintf("%s & %s", downLabel(situation.Down), distance))
 	}
 	if situation.IsRedZone {
 		parts = append(parts, "RZ")
