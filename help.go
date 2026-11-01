@@ -32,6 +32,8 @@ func (m model) renderHelp(width int) string {
 		sectionStyle.Render("READING SCORES"),
 		textStyle.Render("AWAY 7 – 3 HOME  ·  scores belong to the teams beside them"),
 		textStyle.Render("1ST/2ND/3RD/4TH = quarter  ·  venue appears below the score"),
+		textStyle.Render("GB ball  3rd & 7 at CAR 22  ·  possession and down for live games"),
+		textStyle.Render("RED ZONE  offense inside the 20  ·  TO ●●○  timeouts remaining"),
 		"",
 		sectionStyle.Render("NAVIGATION"),
 		textStyle.Render("↑/↓ or j/k     choose rows; wheel or PgUp/PgDn scroll"),
