@@ -130,6 +130,7 @@ func (m model) applyLeaders(msg leadersMsg) model {
 	}
 	m.leaderData, m.leadersError = msg.data, ""
 	m.leaderSelected = max(0, min(m.leaderSelected, len(m.leaderRows())-1))
+	m.leaderScroll = min(m.leaderScroll, m.maxLeaderScroll())
 	return m
 }
 
@@ -184,6 +185,11 @@ func (m model) leaderRender(width int) ([]string, []int) {
 
 func leaderText(rank int, row leaderRow) string {
 	return fmt.Sprintf("%d  %-24s %-4s %-4s %8s", rank, clipText(row.Name, 24), row.Position, row.Team, row.Value)
+}
+
+func (m model) maxLeaderScroll() int {
+	lines, _ := m.leaderRender(m.leagueWidth())
+	return max(0, len(lines)-m.leaguePageSize())
 }
 
 func (m model) moveLeaderSelection(delta int) model {
