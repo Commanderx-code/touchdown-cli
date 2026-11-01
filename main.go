@@ -111,6 +111,17 @@ type model struct {
 	view                     teamPage
 	showPicker               bool
 	showOverview             bool
+	showPlayoffs             bool
+	playoffTab               int
+	playoffScroll            int
+	playoffSeason            int
+	playoffRoundData         map[int]playoffRound
+	showLeaders              bool
+	leaderData               leagueLeaders
+	leadersLoading           bool
+	leadersError             string
+	leaderSelected           int
+	leaderScroll             int
 	overview                 map[int]overviewWeek
 	overviewCursor           int
 	overviewScroll           int
@@ -334,6 +345,10 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.injuryScroll = min(m.injuryScroll, m.maxScrollForTab(tabInjuries))
 		m.playerScroll = min(m.playerScroll, m.maxPlayerScroll())
 		m.detailScroll = min(m.detailScroll, m.maxDetailScroll())
+	case playoffRoundMsg:
+		return m.applyPlayoffRound(msg), nil
+	case leadersMsg:
+		return m.applyLeaders(msg), nil
 	case overviewMsg:
 		return m.applyOverview(msg), nil
 	case injuriesMsg:
@@ -382,6 +397,12 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.week = msg.board.Week.Number
 			if m.showOverview {
 				return m.seasonKnown()
+			}
+			if m.showPlayoffs {
+				return m.playoffLoads(false)
+			}
+			if m.showLeaders {
+				return m.requestLeaders(false)
 			}
 		}
 		if m.selected >= len(m.visibleGames()) {
@@ -528,6 +549,24 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if m.showHelp {
 			break
 		}
+		if m.showPlayoffs && !m.showPlayer {
+			switch msg.Button {
+			case tea.MouseButtonWheelUp:
+				return m.updatePlayoffsKey("up")
+			case tea.MouseButtonWheelDown:
+				return m.updatePlayoffsKey("down")
+			}
+			break
+		}
+		if m.showLeaders && !m.showPlayer {
+			switch msg.Button {
+			case tea.MouseButtonWheelUp:
+				return m.updateLeadersKey("up")
+			case tea.MouseButtonWheelDown:
+				return m.updateLeadersKey("down")
+			}
+			break
+		}
 		if m.showOverview {
 			switch msg.Button {
 			case tea.MouseButtonWheelUp:
@@ -553,6 +592,10 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m = m.scrollBy(3)
 		}
 	case tickMsg:
+		if m.showPlayoffs && m.playoffTab == playoffBracket {
+			next, rounds := m.requestPlayoffRounds(true)
+			return next, tea.Batch(next.loadBoard(), rounds, tick())
+		}
 		if (m.showHome || m.showTeam || !m.showDetail && !m.showStandings) && m.teamScheduleDue() {
 			m.teamLoading = true
 			next, injuries := m.requestInjuries(m.favorite, true)
@@ -605,6 +648,23 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				return m, tea.Quit
 			}
 			return m.updatePlayerKey(key)
+		}
+		if m.showPlayoffs || m.showLeaders {
+			if key == "q" || key == "ctrl+c" {
+				return m, tea.Quit
+			}
+			if m.showPlayoffs {
+				return m.updatePlayoffsKey(key)
+			}
+			return m.updateLeadersKey(key)
+		}
+		if key == "P" && !m.showDetail && !m.showStandings && !m.showTeam {
+			m.pendingFavoriteGame = false
+			return m.openPlayoffs()
+		}
+		if key == "L" && !m.showDetail && !m.showStandings && !m.showTeam {
+			m.pendingFavoriteGame = false
+			return m.openLeaders()
 		}
 		if key == "t" && m.showTeam && !m.showDetail {
 			return m.jumpToOpponent()
@@ -892,6 +952,12 @@ func (m model) openHomeSelection() (model, tea.Cmd) {
 	case 7:
 		m.showHome = true
 		return m.openOverview()
+	case 8:
+		m.showHome = true
+		return m.openPlayoffs()
+	case 9:
+		m.showHome = true
+		return m.openLeaders()
 	case 4, 5:
 		m.standingsFromHome = true
 		m.showStandings = true

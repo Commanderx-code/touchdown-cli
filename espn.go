@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"net/http"
 	"net/url"
@@ -158,6 +159,10 @@ func scoreboardURL(season, week, seasonType int) string {
 	return u
 }
 
+// errNoGames means ESPN has no page for that week, which is normal for a
+// postseason round it has not published yet.
+var errNoGames = errors.New("no games found")
+
 func (c *client) scoreboard(ctx context.Context, season, week, seasonType int) (scoreboard, error) {
 	var out scoreboard
 	cachedAt, err := c.getURL(ctx, scoreboardURL(season, week, seasonType), &out)
@@ -166,7 +171,7 @@ func (c *client) scoreboard(ctx context.Context, season, week, seasonType int) (
 	}
 	out.CachedAt = cachedAt
 	if season != 0 && (len(out.Events) == 0 || out.Week.Number != week) {
-		return out, fmt.Errorf("no games found for %d week %d", season, week)
+		return out, fmt.Errorf("%w for %d week %d", errNoGames, season, week)
 	}
 	sortByKickoff(out.Events)
 	return out, nil

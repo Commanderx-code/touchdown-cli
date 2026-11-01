@@ -14,6 +14,8 @@ Follow every game, keep your favorite team in focus, and open a game for box sco
 - **Rosters and injury reports:** Every season page has roster and injury tabs. The injury report shows status, body part, expected return, and the latest note; the game center lists both teams' Out, Doubtful, and Questionable players, and the favorite's spotlight panel counts them. Players on injured reserve and anyone else ESPN's feed has dropped come from the roster, without a body part or note.
 - **Player cards:** Enter on any roster or injury row opens the player's bio, injury status, and this season's stat lines.
 - **Season overview:** Weeks 1 to 18 at a glance with the game count, your favorite's matchup or result, and the teams on bye. Enter opens that week on the dashboard.
+- **Playoffs:** The playoff picture for each conference, with seeds, wild cards, the teams in the hunt, and the first-round games if the season ended today. A bracket tab follows every postseason round.
+- **League leaders:** The top five in twelve categories. Enter opens a player's card.
 - **Game center:** Team and player stats, play-by-play, quarter scores, scoring plays, and a drive timeline. Live games show possession, down and distance, timeouts remaining, and the latest play when available.
 - **Personalization:** Choose any NFL team and one of three themes (`mint`, `amber`, or `mono`). The favorite team also controls game filtering, standings focus, and optional score alerts.
 - **Offline fallback:** Successful responses are cached locally and can be shown if a later request fails.
@@ -69,6 +71,7 @@ Captured from Touchdown with Week 7 of the 2026 season selected. Scores shown he
 | `1`–`4` or `Tab` | Switch game-detail tabs; `1`–`3` switch season page tabs (schedule, roster, injuries) |
 | `Page Up` / `Page Down` or mouse wheel | Scroll long lists |
 | `s` | Open standings from the home menu or dashboard |
+| `P` / `L` | Open the playoffs or league leaders from the home menu or dashboard |
 | `t` | Open the team picker on the dashboard; open the selected opponent's season on a season page |
 | `f` | Toggle the favorite-game filter on the dashboard |
 | `c` | Choose a favorite team and preview a theme; `Enter` saves, `Esc` cancels |

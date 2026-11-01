@@ -21,7 +21,7 @@ func (m model) canGoBack() bool {
 	if len(m.history) == 0 {
 		return false
 	}
-	if m.showPicker || m.showOverview || (m.showTeam && !m.showDetail) {
+	if m.showPicker || m.showOverview || m.showPlayoffs || m.showLeaders || (m.showTeam && !m.showDetail) {
 		return true
 	}
 	onDashboard := !m.showHome && !m.showDetail && !m.showStandings && !m.showTeam && !m.showSettings
@@ -37,6 +37,8 @@ func (m model) back() (model, tea.Cmd) {
 	m.history = m.history[:len(m.history)-1]
 	m.showPicker = false
 	m.showOverview = false
+	m.showPlayoffs = false
+	m.showLeaders = false
 	m.showTeam = false
 	m.showDetail = false
 	m.showStandings = false
