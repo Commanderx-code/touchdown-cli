@@ -457,3 +457,23 @@ func TestOverviewMsgNeverTouchesBoard(t *testing.T) {
 		t.Fatalf("week 9 summary missing: %+v", w)
 	}
 }
+
+func TestFootersAndHelpMentionTeamsKey(t *testing.T) {
+	m := dashboardModel(t)
+	m.width, m.height = 120, 30
+	if view := m.View(); !strings.Contains(view, "t teams") {
+		t.Fatal("dashboard footer must mention t teams")
+	}
+	m.width = 90
+	if view := m.View(); !strings.Contains(view, "t teams") {
+		t.Fatal("narrow dashboard footer must mention t teams")
+	}
+	m.width, m.showTeam = 120, true
+	if view := m.View(); !strings.Contains(view, "t opponent") {
+		t.Fatal("season page footer must mention t opponent")
+	}
+	m.showTeam, m.showHelp = false, true
+	if view := m.View(); !strings.Contains(view, "t  team schedules") {
+		t.Fatal("help must list t  team schedules")
+	}
+}
