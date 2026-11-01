@@ -281,3 +281,15 @@ func TestVersionDefaultsToDevelopmentBuild(t *testing.T) {
 		t.Fatal("version must never be empty")
 	}
 }
+
+func TestFollowNoteExplainsADroppedFavorite(t *testing.T) {
+	if got := followNote("KC, packers", "GB"); got != "GB is your favorite, so it is always shown." {
+		t.Fatalf("note %q", got)
+	}
+	if got := followNote("KC,DET", "GB"); got != "" {
+		t.Fatalf("note %q", got)
+	}
+	if got := followNote("", "GB"); got != "" {
+		t.Fatalf("note %q", got)
+	}
+}
