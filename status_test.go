@@ -213,3 +213,72 @@ func TestRunRefreshWritesCache(t *testing.T) {
 		t.Fatalf("cache not written: %v %+v", ok, board)
 	}
 }
+
+func tickerBoard() scoreboard {
+	mk := func(id, date, state, short, clock string, period int, away, awayScore, home, homeScore string, sit gameSituation) game {
+		return game{ID: id, Date: date, Status: gameStatus{Type: statusType{State: state, ShortDetail: short, Description: short}, DisplayClock: clock, Period: period},
+			Competitions: []competition{{Situation: sit, Competitors: []competitor{{HomeAway: "away", Score: awayScore, Team: teamRef{ID: away, Abbreviation: away}}, {HomeAway: "home", Score: homeScore, Team: teamRef{ID: home, Abbreviation: home}}}}}}
+	}
+	b := scoreboard{Events: []game{
+		mk("1", "2026-11-01T18:00Z", "post", "Final", "0:00", 4, "KC", "21", "DEN", "24", gameSituation{}),
+		mk("2", "2026-11-01T18:00Z", "in", "8:01 - 3rd", "8:01", 3, "BAL", "14", "BUF", "17", gameSituation{}),
+		mk("3", "2026-11-01T21:25Z", "in", "2:14 - 4th", "2:14", 4, "CAR", "19", "GB", "27", gameSituation{Possession: "GB", Down: 3, Distance: 7, IsRedZone: true}),
+		mk("4", "2026-11-02T01:20Z", "pre", "8:20 PM", "", 0, "PHI", "", "WSH", "", gameSituation{}),
+	}}
+	b.Week.Number = 9
+	return b
+}
+
+func TestTickerLinesOrderAndShape(t *testing.T) {
+	now := time.Date(2026, 11, 1, 14, 32, 7, 0, time.FixedZone("EST", -5*3600))
+	lines := tickerLines(tickerBoard(), "GB", now, 80, false)
+	if len(lines) != 7 {
+		t.Fatalf("want 7 lines, got %d:\n%s", len(lines), strings.Join(lines, "\n"))
+	}
+	if lines[0] != "Week 9 · updated 14:32:07" || lines[1] != "" || lines[3] != "" {
+		t.Fatalf("header/blank lines wrong:\n%s", strings.Join(lines, "\n"))
+	}
+	if !strings.HasPrefix(lines[2], "CAR  19  GB   27   ") || !strings.HasSuffix(lines[2], "BALL GB · 3rd & 7 · RZ") {
+		t.Fatalf("favorite line wrong: %q", lines[2])
+	}
+	if !strings.HasPrefix(lines[4], "BAL  14  BUF  17   8:01 - 3rd") || !strings.HasPrefix(lines[5], "PHI      WSH      ") || !strings.HasSuffix(lines[5], "8:20 PM") || !strings.HasPrefix(lines[6], "KC   21  DEN  24   Final") {
+		t.Fatalf("group order wrong:\n%s", strings.Join(lines, "\n"))
+	}
+	if strings.Count(strings.Join(lines, "\n"), "GB ") != 2 {
+		t.Fatalf("favorite must appear once (score line and BALL):\n%s", strings.Join(lines, "\n"))
+	}
+}
+
+func TestTickerLinesClipToWidth(t *testing.T) {
+	for _, l := range tickerLines(tickerBoard(), "GB", time.Now(), 20, false) {
+		if n := len([]rune(l)); n > 20 {
+			t.Fatalf("line too long (%d): %q", n, l)
+		}
+	}
+}
+
+func TestTickerLinesCachedHeaderAndNoFavorite(t *testing.T) {
+	lines := tickerLines(tickerBoard(), "SEA", time.Now(), 80, true)
+	if !strings.HasSuffix(lines[0], " · cached") {
+		t.Fatalf("header: %q", lines[0])
+	}
+	if lines[1] != "" || lines[2] == "" {
+		t.Fatalf("without a favorite game the list follows the header directly:\n%s", strings.Join(lines, "\n"))
+	}
+}
+
+func TestRunWatchStopsOnCancel(t *testing.T) {
+	api := jsonClient(t, func(*http.Request) {}, liveBoardJSON)
+	ctx, cancel := context.WithCancel(context.Background())
+	var out strings.Builder
+	go func() { time.Sleep(35 * time.Millisecond); cancel() }()
+	if code := runWatch(ctx, api, "GB", 0, 0, 2, &out, 10*time.Millisecond); code != 0 {
+		t.Fatal(code)
+	}
+	if n := strings.Count(out.String(), "\033[H\033[2J"); n < 2 {
+		t.Fatalf("expected at least 2 redraws, got %d", n)
+	}
+	if !strings.Contains(out.String(), "CAR  19  GB   27") {
+		t.Fatalf("ticker missing game:\n%s", out.String())
+	}
+}
