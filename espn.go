@@ -140,15 +140,23 @@ func (g game) statusText() string {
 	return g.Status.Type.Description
 }
 
-func (c *client) scoreboard(ctx context.Context, season, week, seasonType int) (scoreboard, error) {
-	var out scoreboard
-	q := url.Values{}
+// scoreboardURL is the request URL for a week's scoreboard; the cache is
+// keyed by it, so status mode and the TUI share one cached response.
+func scoreboardURL(season, week, seasonType int) string {
+	u := apiBase + "/scoreboard"
 	if season != 0 {
+		q := url.Values{}
 		q.Set("dates", strconv.Itoa(season))
 		q.Set("seasontype", strconv.Itoa(seasonType))
 		q.Set("week", strconv.Itoa(week))
+		u += "?" + q.Encode()
 	}
-	cachedAt, err := c.get(ctx, "/scoreboard", q, &out)
+	return u
+}
+
+func (c *client) scoreboard(ctx context.Context, season, week, seasonType int) (scoreboard, error) {
+	var out scoreboard
+	cachedAt, err := c.getURL(ctx, scoreboardURL(season, week, seasonType), &out)
 	if err != nil {
 		return out, err
 	}
@@ -156,8 +164,12 @@ func (c *client) scoreboard(ctx context.Context, season, week, seasonType int) (
 	if season != 0 && (len(out.Events) == 0 || out.Week.Number != week) {
 		return out, fmt.Errorf("no games found for %d week %d", season, week)
 	}
-	sort.SliceStable(out.Events, func(i, j int) bool { return out.Events[i].dateTime().Before(out.Events[j].dateTime()) })
+	sortByKickoff(out.Events)
 	return out, nil
+}
+
+func sortByKickoff(events []game) {
+	sort.SliceStable(events, func(i, j int) bool { return events[i].dateTime().Before(events[j].dateTime()) })
 }
 
 type boxscore struct {
