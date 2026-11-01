@@ -40,8 +40,9 @@ count on the favorite's spotlight panel.
   when first shown and stay cached for the session; `r` refetches.
 - Blocking the season page. Tabs render a loading line while their data
   arrives; the schedule tab never waits on roster or injury requests.
-- Clobbering the favorite's data. A viewed team's roster and injuries
-  live in that team's page slot, exactly like its schedule.
+- Clobbering the favorite's data. Rosters, injury reports and player
+  stats live in session stores keyed by team or player, never in the
+  dashboard's board or the favorite's schedule fields.
 
 ## Constraints
 
@@ -79,9 +80,11 @@ count on the favorite's spotlight panel.
 - Each tab has its own selected row and scroll. `↑`/`↓`, PgUp/PgDn and
   the wheel move within the active tab.
 - The schedule tab is today's season page, unchanged.
-- The favorite's and a viewed team's roster and injury report live in
-  their page slot, beside the schedule, with the same `Loading`/`Error`
-  pattern. Stale messages for a team that is no longer shown are dropped.
+- Rosters and injury reports live in session stores keyed by team
+  abbreviation, shared by the season page, the game center and the
+  spotlight panel, each entry with its own `Loading`/`Error` state. A
+  message for any team is stored; nothing is stale, so nothing is
+  dropped. Player stats live in a store keyed by athlete ID.
 
 ### Roster
 
@@ -119,11 +122,15 @@ count on the favorite's spotlight panel.
   parts omitted; `Rookie` for zero years), and when the player appears in
   the team's injury report: `OUT  ·  Knee - ACL  ·  back Nov 25` plus
   the comment, wrapped.
-- Below, `SEASON STATS`: for each category the overview returns, a
-  header line with the category name, the labels row, then the
-  `Regular Season` split's values aligned under the labels; a split
-  named `Projected` is skipped. `No season stats yet.` when the overview
-  has no statistics. `Loading stats…` while loading; `Stats: {error}`
+- Below, `SEASON STATS`: the overview's `statistics` has one flat
+  `labels[]` and `categories[]` with `displayName` and `count`; the
+  labels and each split's values are sliced by those counts. For each
+  category: a header line with the category name upper-cased
+  (`PASSING`, `RUSHING`), the labels row, then one values row from the
+  `Regular Season` split. When there is no `Regular Season` split, the
+  first split not named `Projected` is used and its name is shown after
+  the category header (`CAREER`). `No season stats yet.` when the
+  overview has no statistics or no usable split. `Loading stats…` while loading; `Stats: {error}`
   on failure. Stats load when the card opens and are cached per player
   for the session.
 - `↑`/`↓`, PgUp/PgDn and the wheel scroll. `Esc` returns to the tab
@@ -140,8 +147,11 @@ count on the favorite's spotlight panel.
   (Knee - ACL)` for Out, Doubtful and Questionable players, at most 8
   per team then `+N more`. `No Out, Doubtful or Questionable players.`
   when a team has none. `Loading injury report…` until both loaded.
-- Both teams' reports are requested when the game center opens, from
-  the same cache the season pages use. They are not refetched on the
+- The section appears only when the game's kickoff is within 14 days
+  of now, either side; ESPN's feed is current state, not game-time, so
+  older games omit it entirely.
+- Both teams' reports are requested when the game center opens unless
+  the store already holds them. They are not refetched on the
   30-second tick; `r` in the game center refetches them with the
   summary.
 
@@ -176,6 +186,12 @@ count on the favorite's spotlight panel.
 - Athlete IDs for injury rows are parsed from the player-card link
   (`/id/{n}/`); a row with no parsable ID still renders but Enter on it
   does nothing.
+
+- Four builder-check questions settled here: one session store per data
+  kind (team-keyed maps, no page slots); the player card renders one
+  values row per category from the `Regular Season` split, labels sliced
+  by `categories[].count`; the game-center injury section is limited to
+  games within 14 days of now.
 
 ## Left to the builder
 
