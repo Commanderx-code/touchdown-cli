@@ -1,6 +1,7 @@
 package main
 
 import (
+	"errors"
 	"fmt"
 	"strconv"
 	"strings"
@@ -132,4 +133,16 @@ func scoreOrZero(s string) string {
 		return "0"
 	}
 	return s
+}
+
+// validateStatusFlags rejects flag combinations that have no meaning in
+// status mode or outside it.
+func validateStatusFlags(status, watch, split, refresh, once, notify, compact bool) error {
+	if !status && (watch || split || refresh) {
+		return errors.New("-watch, -split and -refresh require -status")
+	}
+	if status && (once || notify || compact) {
+		return errors.New("-status cannot be combined with -once, -notify, -notify-all or -compact")
+	}
+	return nil
 }

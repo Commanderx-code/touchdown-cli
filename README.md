@@ -13,6 +13,7 @@ Follow every game, keep your favorite team in focus, and open a game for box sco
 - **Game center:** Team and player stats, play-by-play, quarter scores, scoring plays, and a drive timeline. Live games show possession and the latest play when available.
 - **Personalization:** Choose any NFL team and one of three themes (`mint`, `amber`, or `mono`). The favorite team also controls game filtering, standings focus, and optional score alerts.
 - **Offline fallback:** Successful responses are cached locally and can be shown if a later request fails.
+- **Status line:** `td -status` prints a one-line score for your shell prompt, and `td -status -watch` runs a ticker in a tmux, Zellij, herdr, Kitty, or WezTerm pane.
 
 ## Quick start
 
@@ -104,11 +105,66 @@ td -season 2026 -week 1 -type 3  # Open a postseason week
 td -compact                      # Use the compact layout
 td -notify                       # Alert for favorite-team scores and finals
 td -notify-all                   # Alert for all scores and finals
+td -status                       # Print one line for a shell prompt (see below)
+td -status -watch                # Redraw a scoreboard ticker every 30 seconds
+td -status -split                # Open the ticker in a new multiplexer pane
 ```
 
 `-type` accepts `1` for preseason, `2` for regular season (the default), and `3` for postseason. `-season` and `-week` must be used together. Use `td -h` for the full option list.
 
 Desktop alerts are optional and require `notify-send` and a running notification service. Touchdown does not alert on an initial load or a cached response.
+
+## Status line
+
+`td -status` prints your favorite team's game as one plain line and exits, fast enough to sit in a shell prompt:
+
+```
+GB 27-19 CAR · Q4 2:14 · BALL
+GB W 27-19 CAR · Final
+GB @ DET · Sun 1:00 PM
+```
+
+The score always reads favorite first. `BALL` means your team has possession and `RZ` that it is in the red zone. On a bye week the line is empty, so prompt segments disappear. It never waits on the network: it prints from the local cache and, when that is older than 30 seconds, starts a short background refresh so the next prompt is current. The first run after install prints nothing until that refresh lands. Data older than five minutes is marked `(cached)`.
+
+For [Starship](https://starship.rs), add to `~/.config/starship.toml`:
+
+```toml
+[custom.nfl]
+command = "td -status"
+when = "command -v td"
+format = "🏈 [$output]($style) "
+style = "bold green"
+shell = ["sh", "--norc"]
+```
+
+`shell` keeps the segment from paying your interactive shell's start-up cost on every prompt.
+
+### Ticker pane
+
+`td -status -watch` redraws a compact scoreboard every 30 seconds, sized for a narrow pane beside your editor: your team's game first, then live games, upcoming kickoffs, and finals. Press Ctrl-C to stop.
+
+`td -status -split` opens that ticker in a new pane to the right of the current one. It detects the innermost host it is running in:
+
+| Host | What `-split` does |
+| --- | --- |
+| tmux | `tmux split-window -h -l 36` |
+| Zellij | `zellij run -d right` |
+| herdr | `herdr pane split --current --direction right`, then `herdr pane run` |
+| Kitty | `kitten @ launch --location=vsplit` (needs `allow_remote_control yes` in `kitty.conf`) |
+| WezTerm | `wezterm cli split-pane --right --percent 35` |
+| Anything else | prints the command to run in a pane you open yourself |
+
+Ghostty, Konsole, and other terminals without a split command fall into the last row. `-favorite`, `-config`, `-season`, `-week`, and `-type` are passed through to the pane.
+
+In [herdr](https://herdr.dev) you can also bind a key that opens the ticker directly, in `~/.config/herdr/config.toml`:
+
+```toml
+[[keys.command]]
+key = "prefix+alt+g"
+type = "pane"
+command = "td -status -watch"
+description = "NFL ticker"
+```
 
 ## Data and refresh behavior
 
