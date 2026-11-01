@@ -2,8 +2,10 @@ package main
 
 import (
 	"context"
+	"io"
 	"net/http"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"reflect"
 	"strings"
@@ -294,5 +296,99 @@ func TestStatusOutputStripsControlCharacters(t *testing.T) {
 		if strings.ContainsAny(l, "\x1b\x07\r\n") {
 			t.Fatalf("ticker line not sanitized: %q", l)
 		}
+	}
+}
+
+func TestDetectHostPrefersInnermost(t *testing.T) {
+	cases := []struct {
+		env  map[string]string
+		want string
+	}{
+		{map[string]string{"TMUX": "/tmp/tmux-1000/default,1,0", "KITTY_PID": "4242"}, "tmux"},
+		{map[string]string{"ZELLIJ": "0", "WEZTERM_PANE": "3"}, "zellij"},
+		{map[string]string{"HERDR_ENV": "1"}, "herdr"},
+		{map[string]string{"HERDR_ENV": "0"}, ""},
+		{map[string]string{"KITTY_PID": "4242"}, "kitty"},
+		{map[string]string{"WEZTERM_PANE": "3"}, "wezterm"},
+		{map[string]string{}, ""},
+	}
+	for _, tc := range cases {
+		if got := detectHost(func(k string) string { return tc.env[k] }); got != tc.want {
+			t.Errorf("%v: got %q want %q", tc.env, got, tc.want)
+		}
+	}
+}
+
+func TestShellQuote(t *testing.T) {
+	if got := shellQuote([]string{"/opt/my td/td", "-favorite=Green Bay", "it's"}); got != `'/opt/my td/td' '-favorite=Green Bay' 'it'\''s'` {
+		t.Fatal(got)
+	}
+}
+
+func captureHostCommands(t *testing.T, respond func(name string, args []string) ([]byte, error)) *[][]string {
+	t.Helper()
+	var calls [][]string
+	runHostCommand = func(name string, args ...string) ([]byte, error) {
+		calls = append(calls, append([]string{name}, args...))
+		return respond(name, args)
+	}
+	t.Cleanup(func() { runHostCommand = realRunHostCommand })
+	return &calls
+}
+
+func TestOpenSplitCommands(t *testing.T) {
+	calls := captureHostCommands(t, func(name string, args []string) ([]byte, error) {
+		if name == "herdr" && args[1] == "split" {
+			return []byte(`{"result":{"pane":{"pane_id":"w1:p3"}}}`), nil
+		}
+		return nil, nil
+	})
+	child := []string{"/bin/td", "-status", "-watch", "-favorite=GB"}
+	cases := []struct {
+		host string
+		want [][]string
+	}{
+		{"tmux", [][]string{append([]string{"tmux", "split-window", "-h", "-l", "36", "-d"}, child...)}},
+		{"zellij", [][]string{append([]string{"zellij", "run", "-d", "right", "-n", "NFL", "--"}, child...)}},
+		{"kitty", [][]string{append([]string{"kitten", "@", "launch", "--location=vsplit", "--keep-focus"}, child...)}},
+		{"wezterm", [][]string{append([]string{"wezterm", "cli", "split-pane", "--right", "--percent", "35", "--"}, child...)}},
+		{"herdr", [][]string{
+			{"herdr", "pane", "split", "--current", "--direction", "right", "--ratio", "0.35", "--no-focus"},
+			{"herdr", "pane", "run", "w1:p3", "'/bin/td' '-status' '-watch' '-favorite=GB'"},
+		}},
+	}
+	for _, tc := range cases {
+		*calls = nil
+		if code := openSplit(tc.host, "/bin/td", []string{"-favorite=GB"}, io.Discard); code != 0 {
+			t.Errorf("%s: exit %d", tc.host, code)
+		}
+		if !reflect.DeepEqual(*calls, tc.want) {
+			t.Errorf("%s:\n got %q\nwant %q", tc.host, *calls, tc.want)
+		}
+	}
+}
+
+func TestOpenSplitFailures(t *testing.T) {
+	var errOut strings.Builder
+	calls := captureHostCommands(t, func(name string, args []string) ([]byte, error) {
+		switch name {
+		case "herdr":
+			return []byte(`{"error":"no focused pane"}`), nil
+		case "tmux":
+			return nil, &exec.ExitError{ProcessState: &os.ProcessState{}, Stderr: []byte("no server running")}
+		}
+		return nil, nil
+	})
+	if code := openSplit("", "/bin/td", nil, &errOut); code != 1 || !strings.Contains(errOut.String(), "Run this in a new pane:") || !strings.Contains(errOut.String(), "'/bin/td' '-status' '-watch'") {
+		t.Fatalf("unknown host: code %d out %q", code, errOut.String())
+	}
+	errOut.Reset()
+	*calls = nil
+	if code := openSplit("herdr", "/bin/td", nil, &errOut); code != 1 || len(*calls) != 1 || !strings.Contains(errOut.String(), "Run this in a new pane:") {
+		t.Fatalf("herdr without pane id: code %d calls %q out %q", code, *calls, errOut.String())
+	}
+	errOut.Reset()
+	if code := openSplit("tmux", "/bin/td", nil, &errOut); code != 1 || !strings.Contains(errOut.String(), "tmux failed") || !strings.Contains(errOut.String(), "no server running") {
+		t.Fatalf("tmux failure: code %d out %q", code, errOut.String())
 	}
 }
