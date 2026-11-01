@@ -9,9 +9,6 @@ on:
 permissions:
   contents: write
 
-env:
-  SITE_TOKEN: ${{ secrets.SITE_TOKEN }}
-
 jobs:
   release:
     runs-on: ubuntu-latest
@@ -51,7 +48,8 @@ jobs:
       # A release made with this workflow's token does not start other
       # workflows, so site.yml never runs. Tell the site from here instead.
       - name: Tell the site
-        if: ${{ env.SITE_TOKEN != '' }}
         env:
-          GH_TOKEN: ${{ env.SITE_TOKEN }}
-        run: gh api repos/Commanderx-code/helix-site/dispatches -f event_type=tool-release -f "client_payload[repo]=$GITHUB_REPOSITORY"
+          GH_TOKEN: ${{ secrets.SITE_TOKEN }}
+        run: |
+          [ -n "$GH_TOKEN" ] || exit 0
+          gh api repos/Commanderx-code/helix-site/dispatches -f event_type=tool-release -f "client_payload[repo]=$GITHUB_REPOSITORY"
