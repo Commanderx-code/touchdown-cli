@@ -135,6 +135,7 @@ func (c *client) teamSchedule(ctx context.Context, team string, season int) (tea
 	if err != nil {
 		return out, err
 	}
+	out.Team.Name, out.Team.DisplayName = plainText(out.Team.Name), plainText(out.Team.DisplayName)
 	out.CachedAt = cachedAt
 	if len(out.Events) == 0 {
 		return out, fmt.Errorf("schedule unavailable for %s", team)
