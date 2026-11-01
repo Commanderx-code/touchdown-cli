@@ -179,3 +179,11 @@ func TestLiveTextStripsControlCharacters(t *testing.T) {
 		t.Fatalf("latest play: %q", got)
 	}
 }
+
+func TestHelpLegendMentionsRedZoneAndTimeouts(t *testing.T) {
+	m := model{showHelp: true, width: 100, height: 30}
+	view := m.View()
+	if !strings.Contains(view, "RED ZONE") || !strings.Contains(view, "TO ●●○") {
+		t.Fatalf("legend missing:\n%s", view)
+	}
+}
