@@ -859,6 +859,7 @@ func main() {
 	watch := flag.Bool("watch", false, "with -status, redraw a scoreboard ticker every 30 seconds")
 	split := flag.Bool("split", false, "with -status, open the ticker in a new multiplexer pane")
 	refresh := flag.Bool("refresh", false, "refresh the status cache and exit (used by -status)")
+	live := flag.Bool("live", false, "with -status, print the line only while the favorite's game is in progress")
 	flag.Parse()
 	if *setFavorite != "" {
 		team, err := saveFavorite(*configPath, *setFavorite)
@@ -907,6 +908,10 @@ func main() {
 		fmt.Fprintln(os.Stderr, err)
 		os.Exit(2)
 	}
+	if *live && !*status {
+		fmt.Fprintln(os.Stderr, "-live requires -status")
+		os.Exit(2)
+	}
 	api := newClient()
 	if *status {
 		api.http.Timeout = refreshTimeout
@@ -927,7 +932,7 @@ func main() {
 		if *split {
 			os.Exit(openSplit(detectHost(os.Getenv), self, forwardedFlags(flag.CommandLine), os.Stderr))
 		}
-		os.Exit(runStatusOnce(api.cacheDir, team.abbreviation, *season, *week, *seasonType, time.Now(), self, forwardedFlags(flag.CommandLine), os.Stdout))
+		os.Exit(runStatusOnce(api.cacheDir, team.abbreviation, *season, *week, *seasonType, time.Now(), self, forwardedFlags(flag.CommandLine), os.Stdout, *live))
 	}
 	if *once {
 		board, err := api.scoreboard(context.Background(), *season, *week, *seasonType)
