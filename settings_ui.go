@@ -2,6 +2,7 @@ package main
 
 import (
 	"fmt"
+	"slices"
 	"strings"
 	"time"
 
@@ -46,6 +47,8 @@ func (m model) updateSettingsKey(key string) (model, tea.Cmd) {
 	case "right", "l":
 		m.settingsTheme = (m.settingsTheme + 1) % len(themeNames)
 		_ = applyTheme(themeNames[m.settingsTheme])
+	case " ":
+		return m.toggleFollowed(), nil
 	case "enter":
 		team := nflTeams[m.settingsTeam]
 		chosenTheme := themeNames[m.settingsTheme]
@@ -54,6 +57,7 @@ func (m model) updateSettingsKey(key string) (model, tea.Cmd) {
 			return m, nil
 		}
 		m.favorite = team.abbreviation
+		m.followed = slices.DeleteFunc(slices.Clone(m.followed), func(t string) bool { return t == team.abbreviation })
 		m.theme = chosenTheme
 		m.showSettings = false
 		if m.showDetail || m.showStandings || m.showTeam {
@@ -86,6 +90,27 @@ func (m model) updateSettingsKey(key string) (model, tea.Cmd) {
 		}
 	}
 	return m, nil
+}
+
+// toggleFollowed follows or unfollows the highlighted team and saves at once.
+// The favorite is always shown, so it cannot also be followed.
+func (m model) toggleFollowed() model {
+	team := nflTeams[m.settingsTeam].abbreviation
+	if team == m.favorite {
+		return m
+	}
+	followed := slices.Clone(m.followed)
+	if i := slices.Index(followed, team); i >= 0 {
+		followed = slices.Delete(followed, i, i+1)
+	} else {
+		followed = append(followed, team)
+	}
+	if err := saveFollowed(m.configPath, followed); err != nil {
+		m.settingsError = err.Error()
+		return m
+	}
+	m.followed, m.settingsError = followed, ""
+	return m
 }
 
 func (m model) settingsPageSize() int {
@@ -134,6 +159,11 @@ func (m model) renderSettings(width int) string {
 			marker = "›"
 		}
 		row := fmt.Sprintf("%s %-3s  %s %s", marker, team.abbreviation, team.city, team.nickname)
+		if team.abbreviation == m.favorite {
+			row += "  ★"
+		} else if slices.Contains(m.followed, team.abbreviation) {
+			row += "  +"
+		}
 		if i == m.settingsTeam {
 			lines = append(lines, selectedStyle.Render(padLine(row, inner)))
 		} else {
@@ -144,6 +174,6 @@ func (m model) renderSettings(width int) string {
 	if m.settingsError != "" {
 		lines = append(lines, liveStyle.Render(clipText(m.settingsError, inner)))
 	}
-	lines = append(lines, dimStyle.Render("↑/↓ team · ←/→ theme · Enter save · Esc cancel"))
+	lines = append(lines, dimStyle.Render("↑/↓ team · ←/→ theme · Space follow · Enter save · Esc cancel"))
 	return centerBlock(framedLines(lines, inner), width)
 }

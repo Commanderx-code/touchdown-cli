@@ -2,6 +2,7 @@ package main
 
 import (
 	"encoding/json"
+	"flag"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -56,8 +57,9 @@ func favoriteLabel(abbreviation string) string {
 }
 
 type appConfig struct {
-	FavoriteTeam string `json:"favorite_team"`
-	Theme        string `json:"theme"`
+	FavoriteTeam  string   `json:"favorite_team"`
+	Theme         string   `json:"theme"`
+	FollowedTeams []string `json:"followed_teams"`
 }
 
 func defaultConfigPath() (string, error) {
@@ -95,7 +97,59 @@ func loadConfig(path string) (appConfig, error) {
 		return config, fmt.Errorf("read config %s: unknown theme %q", path, config.Theme)
 	}
 	config.Theme = themeNames[themeIndex(config.Theme)]
+	if config.FollowedTeams, err = normalizeFollowed(config.FollowedTeams, config.FavoriteTeam); err != nil {
+		return config, fmt.Errorf("read config %s: %w", path, err)
+	}
 	return config, nil
+}
+
+// normalizeFollowed resolves team names to abbreviations, keeping the first
+// of any repeats. The favorite is already always shown, so it is dropped.
+func normalizeFollowed(values []string, favorite string) ([]string, error) {
+	var teams []string
+	seen := map[string]bool{favorite: true}
+	for _, value := range values {
+		team, err := resolveTeam(strings.TrimSpace(value))
+		if err != nil {
+			return nil, err
+		}
+		if !seen[team.abbreviation] {
+			seen[team.abbreviation] = true
+			teams = append(teams, team.abbreviation)
+		}
+	}
+	return teams, nil
+}
+
+// parseFollowed reads a comma-separated team list; an empty one follows nobody.
+func parseFollowed(value, favorite string) ([]string, error) {
+	var values []string
+	for _, part := range strings.Split(value, ",") {
+		if strings.TrimSpace(part) != "" {
+			values = append(values, part)
+		}
+	}
+	return normalizeFollowed(values, favorite)
+}
+
+func followedLabel(teams []string) string {
+	if len(teams) == 0 {
+		return "none"
+	}
+	return strings.Join(teams, ", ")
+}
+
+func flagWasSet(fs *flag.FlagSet, name string) bool {
+	found := false
+	fs.Visit(func(f *flag.Flag) { found = found || f.Name == name })
+	return found
+}
+
+func saveFollowed(path string, teams []string) error {
+	if teams == nil {
+		teams = []string{}
+	}
+	return updateConfig(path, map[string]any{"followed_teams": teams})
 }
 
 func saveFavorite(path, value string) (teamInfo, error) {
@@ -103,7 +157,7 @@ func saveFavorite(path, value string) (teamInfo, error) {
 	if err != nil {
 		return team, err
 	}
-	if err := updateConfig(path, map[string]string{"favorite_team": team.abbreviation}); err != nil {
+	if err := updateConfig(path, map[string]any{"favorite_team": team.abbreviation}); err != nil {
 		return team, err
 	}
 	return team, nil
@@ -118,10 +172,10 @@ func saveSettings(path, favorite, theme string) error {
 	if index < 0 {
 		return fmt.Errorf("unknown theme %q", theme)
 	}
-	return updateConfig(path, map[string]string{"favorite_team": team.abbreviation, "theme": themeNames[index]})
+	return updateConfig(path, map[string]any{"favorite_team": team.abbreviation, "theme": themeNames[index]})
 }
 
-func updateConfig(path string, values map[string]string) error {
+func updateConfig(path string, values map[string]any) error {
 	data := map[string]json.RawMessage{}
 	if existing, err := os.ReadFile(path); err == nil {
 		if err := json.Unmarshal(existing, &data); err != nil {

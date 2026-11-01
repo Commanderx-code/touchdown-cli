@@ -80,8 +80,10 @@ func (m model) homeOptions() []string {
 		}
 	}
 	favoriteCount := 0
-	if _, ok := m.favoriteMatch(); ok {
-		favoriteCount = 1
+	for _, g := range m.board.Events {
+		if m.watching(g) {
+			favoriteCount++
+		}
 	}
 	favorite := favoriteLabel(m.favorite)
 	return []string{
