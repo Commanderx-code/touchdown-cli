@@ -831,14 +831,15 @@ func main() {
 			stop()
 			os.Exit(code)
 		}
-		if !*watch && !*split {
-			self, err := os.Executable()
-			if err != nil {
-				fmt.Fprintln(os.Stderr, err)
-				os.Exit(1)
-			}
-			os.Exit(runStatusOnce(api.cacheDir, team.abbreviation, *season, *week, *seasonType, time.Now(), self, forwardedFlags(), os.Stdout))
+		self, err := os.Executable()
+		if err != nil {
+			fmt.Fprintln(os.Stderr, err)
+			os.Exit(1)
 		}
+		if *split {
+			os.Exit(openSplit(detectHost(os.Getenv), self, forwardedFlags(), os.Stderr))
+		}
+		os.Exit(runStatusOnce(api.cacheDir, team.abbreviation, *season, *week, *seasonType, time.Now(), self, forwardedFlags(), os.Stdout))
 	}
 	if *once {
 		board, err := api.scoreboard(context.Background(), *season, *week, *seasonType)
