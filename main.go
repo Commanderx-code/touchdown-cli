@@ -116,6 +116,9 @@ type model struct {
 	overviewScroll           int
 	overviewSeason           int
 	overviewFavorite         string
+	injuryReports            map[string]injuryEntry
+	rosters                  map[string]rosterEntry
+	players                  map[string]playerEntry
 	history                  []backTarget
 	pickerIndex              int
 	pickerScroll             int
@@ -309,6 +312,12 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.detailScroll = min(m.detailScroll, m.maxDetailScroll())
 	case overviewMsg:
 		return m.applyOverview(msg), nil
+	case injuriesMsg:
+		return m.applyInjuries(msg), nil
+	case rosterMsg:
+		return m.applyRoster(msg), nil
+	case playerMsg:
+		return m.applyPlayer(msg), nil
 	case boardMsg:
 		if m.season != msg.season || m.week != msg.week || m.seasonType != msg.seasonType {
 			break
