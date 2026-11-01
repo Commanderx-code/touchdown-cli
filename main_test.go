@@ -150,7 +150,7 @@ func TestFavoriteSpotlightDuringBye(t *testing.T) {
 	}
 	for _, inner := range []int{32, 74} {
 		m := model{favorite: "GB", season: 2026, week: 11, seasonType: 2, teamSeason: 2026, teamData: schedule}
-		card := m.spotlightPanel(inner)
+		card := m.spotlightPanel(inner, 0)
 		for _, want := range []string{"NEXT", "W12", "@ LAR", "BYE WEEK 11", "LAST", "W 24-17"} {
 			if !strings.Contains(card, want) {
 				t.Errorf("width %d: missing %q from %s", inner, want, card)
@@ -174,7 +174,7 @@ func TestFavoriteSpotlightMovesPastJustFinishedGame(t *testing.T) {
 		t.Fatal(err)
 	}
 	m := model{favorite: "GB", season: 2026, week: 7, seasonType: 2, board: board, teamSeason: 2026, teamData: schedule}
-	card := m.spotlightPanel(74)
+	card := m.spotlightPanel(74, 0)
 	for _, want := range []string{"NEXT", "W8", "vs CAR", "LAST", "W 27-20", "@ DET"} {
 		if !strings.Contains(card, want) {
 			t.Errorf("missing %q from %s", want, card)

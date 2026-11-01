@@ -8,9 +8,10 @@ Follow every game, keep your favorite team in focus, and open a game for box sco
 
 ## Features
 
-- **Scores dashboard:** Live, final, and upcoming games with a favorite-team card and a conference standings snapshot on wide terminals.
+- **Scores dashboard:** Live, final, and upcoming games with a favorite-team card and a conference standings snapshot on wide terminals. Live rows show possession, down and distance, and red zone.
+- **Scoring feed:** Every score across live games appears on the dashboard with the play that produced it.
 - **Favorite-team view:** Your next matchup and kickoff, latest result, bye week, season schedule, record, and passing, rushing, and receiving leaders.
-- **Game center:** Team and player stats, play-by-play, quarter scores, scoring plays, and a drive timeline. Live games show possession and the latest play when available.
+- **Game center:** Team and player stats, play-by-play, quarter scores, scoring plays, and a drive timeline. Live games show possession, down and distance, timeouts remaining, and the latest play when available.
 - **Personalization:** Choose any NFL team and one of three themes (`mint`, `amber`, or `mono`). The favorite team also controls game filtering, standings focus, and optional score alerts.
 - **Offline fallback:** Successful responses are cached locally and can be shown if a later request fails.
 - **Status line:** `td -status` prints a one-line score for your shell prompt, and `td -status -watch` runs a ticker in a tmux, Zellij, herdr, Kitty, or WezTerm pane.
@@ -168,7 +169,7 @@ description = "NFL ticker"
 
 ## Data and refresh behavior
 
-Scores refresh every 30 seconds while Touchdown is open. The favorite-team schedule loads in the background and refreshes every five minutes. Season leader totals are calculated from completed game box scores when you open the season page; they may be partial if a game summary is unavailable.
+Scores refresh every 30 seconds while Touchdown is open. Each new score triggers one request for that game's summary to fetch the scoring play for the feed. The favorite-team schedule loads in the background and refreshes every five minutes. Season leader totals are calculated from completed game box scores when you open the season page; they may be partial if a game summary is unavailable.
 
 Touchdown uses ESPN's publicly accessible, undocumented NFL scoreboard, summary, schedule, and standings endpoints. Those endpoints can change or become unavailable. Data can lag live action, and stats or play-by-play may be absent before kickoff or while a game is being updated. Kickoff times use your terminal's local timezone.
 

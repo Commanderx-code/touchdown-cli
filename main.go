@@ -105,6 +105,8 @@ type model struct {
 	width, height            int
 	notify, notifyAll        bool
 	compact                  bool
+	feed                     []scoringEvent
+	feedPending              map[string]int
 }
 
 func (m model) loadBoard() tea.Cmd {
@@ -311,8 +313,12 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			break
 		}
 		alerts := []scoreAlert{}
-		if m.notify && msg.board.CachedAt.IsZero() && m.board.CachedAt.IsZero() && len(m.board.Events) > 0 {
-			alerts = scoreAlerts(m.board, msg.board, m.favorite, m.notifyAll)
+		var feedCmds []tea.Cmd
+		if msg.board.CachedAt.IsZero() && m.board.CachedAt.IsZero() && len(m.board.Events) > 0 {
+			if m.notify {
+				alerts = scoreAlerts(m.board, msg.board, m.favorite, m.notifyAll)
+			}
+			m, feedCmds = m.recordScoring(scoringEvents(m.board, msg.board, m.favorite))
 		}
 		m.board = msg.board
 		if m.showDetail {
@@ -364,10 +370,18 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		for _, alert := range alerts {
 			cmds = append(cmds, sendAlert(alert))
 		}
+		cmds = append(cmds, feedCmds...)
 		if len(cmds) > 0 {
 			return m, tea.Batch(cmds...)
 		}
+	case feedDetailMsg:
+		if msg.err == nil {
+			m = m.enrichFeed(msg.id, msg.detail)
+		}
 	case detailMsg:
+		if msg.err == nil {
+			m = m.enrichFeed(msg.id, msg.detail)
+		}
 		if msg.id != m.detailID {
 			break
 		}
@@ -654,6 +668,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				break
 			}
 			m.week += delta
+			m.feed, m.feedPending = nil, nil
 			m.selected = 0
 			m.loading = true
 			m.errorText = ""
