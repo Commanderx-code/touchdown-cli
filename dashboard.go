@@ -379,10 +379,10 @@ func (m model) narrowDashboard(inner int) string {
 	// and keep at least one game row (two lines) when sizing the spotlight.
 	spotlightMax := m.panelBudget() - 1 - lineCount(feedLine) - 2 - 2 - 2 - 2
 	spotlight := m.spotlightPanel(inner, max(3, spotlightMax))
-	rows := len(m.visibleGames())
+	rows := 0 // no cap without a known height
 	if m.height > 0 {
 		used := 1 + lineCount(feedLine) + lineCount(spotlight) + 4
-		rows = min(rows, max(1, (m.panelBudget()-used)/2))
+		rows = max(1, (m.panelBudget()-used)/2)
 	}
 	parts := []string{m.dashboardSummary(width)}
 	if feedLine != "" {
@@ -410,9 +410,9 @@ func (m model) wideDashboard() string {
 		right = append(right, m.feedPanel(rightInner, entries))
 	}
 	right = append(right, snapshot)
-	rows := len(m.visibleGames())
+	rows := 0 // no cap without a known height
 	if m.height > 0 {
-		rows = min(rows, max(1, (budget-4)/2))
+		rows = max(1, (budget-4)/2)
 	}
 	left := m.scoreboardPanel(leftInner, rows)
 	return m.dashboardSummary(m.width) + "\n\n" + centerBlock(joinBlocks(left, strings.Join(right, "\n"), 3), m.width)

@@ -172,8 +172,16 @@ func (c *client) scoreboard(ctx context.Context, season, week, seasonType int) (
 	return out, nil
 }
 
+// sortByKickoff orders games by kickoff, with games that have no parseable
+// kickoff time last.
 func sortByKickoff(events []game) {
-	sort.SliceStable(events, func(i, j int) bool { return events[i].dateTime().Before(events[j].dateTime()) })
+	sort.SliceStable(events, func(i, j int) bool {
+		a, b := events[i].dateTime(), events[j].dateTime()
+		if a.IsZero() || b.IsZero() {
+			return !a.IsZero() && b.IsZero()
+		}
+		return a.Before(b)
+	})
 }
 
 type boxscore struct {

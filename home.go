@@ -91,6 +91,8 @@ func (m model) homeOptions() []string {
 		fmt.Sprintf("%s SEASON", favorite),
 		"NFC STANDINGS",
 		"AFC STANDINGS",
+		"TEAM SCHEDULES",
+		"SEASON",
 	}
 }
 
@@ -102,7 +104,7 @@ func (m model) renderHome(width int) string {
 	if m.compact {
 		height = min(height, 15)
 	}
-	if height < 11 {
+	if height < 13 {
 		options := m.homeOptions()
 		return accentStyle.Render("◆ TOUCHDOWN") + "\n" + selectedStyle.Render("› "+options[m.homeSelection]) + "\n" + dimStyle.Render("↑/↓ · Enter · g game · q")
 	}
@@ -117,7 +119,7 @@ func (m model) renderHome(width int) string {
 	if height >= 16 {
 		lines = append(lines, sectionStyle.Render("SELECT A VIEW"), borderStyle.Render(strings.Repeat("─", inner)))
 	}
-	icons := []string{"◉", "●", "★", "▦", "◌", "◌"}
+	icons := []string{"◉", "●", "★", "▦", "◌", "◌", "▤", "▥"}
 	for i, option := range m.homeOptions() {
 		marker := " "
 		if i == m.homeSelection {
@@ -151,13 +153,22 @@ func (m model) renderHome(width int) string {
 	}
 	subtitle := centerLine(subtitleStyle.Render("Terminal Live Football"), width)
 	status := m.dashboardSummary(width)
-	var screen string
-	if height >= 23 {
-		screen = brand + "\n" + subtitle + "\n\n" + status + "\n\n" + menu + "\n\n" + footer
-	} else if height >= 16 {
-		screen = brand + "\n" + subtitle + "\n" + status + "\n" + menu + "\n" + footer
-	} else {
-		screen = brand + "\n" + subtitle + "\n" + menu + "\n" + footer
+	// Try the roomiest layout first and fall back until the screen fits.
+	layouts := []string{
+		brand + "\n" + subtitle + "\n\n" + status + "\n\n" + menu + "\n\n" + footer,
+		brand + "\n" + subtitle + "\n" + status + "\n" + menu + "\n" + footer,
+		centerLine(accentStyle.Render("◆  TOUCHDOWN"), width) + "\n" + subtitle + "\n" + status + "\n" + menu + "\n" + footer,
+		centerLine(accentStyle.Render("◆  TOUCHDOWN"), width) + "\n" + subtitle + "\n" + menu + "\n" + footer,
+	}
+	if height < 23 {
+		layouts = layouts[1:]
+	}
+	screen := layouts[len(layouts)-1]
+	for _, candidate := range layouts {
+		if strings.Count(candidate, "\n")+1 <= height {
+			screen = candidate
+			break
+		}
 	}
 	free := height - strings.Count(screen, "\n") - 1
 	if free > 0 {

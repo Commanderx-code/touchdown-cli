@@ -20,6 +20,22 @@ _Avoid_: Detail view, game view
 The dashboard card for the favorite team: next game, live score, last result, record.
 _Avoid_: Watch card, favorite card
 
+**Season page**:
+One team's full season: record, next game, bye week, every matchup with result or kickoff, and season leaders. The favorite's opens with `p`; any team's opens from the team picker.
+_Avoid_: Team view, team page, schedule page
+
+**Team picker**:
+The list of all 32 teams used to choose a team, in settings and for season pages.
+_Avoid_: Team list, team selector
+
+**Season overview**:
+The page listing every regular-season week with its game count, the favorite's matchup, and the teams on bye.
+_Avoid_: Week list, calendar, schedule grid
+
+**Kickoff slot**:
+A group of games sharing the same kickoff day and local time, such as Sunday 1:00 PM.
+_Avoid_: Time window, game window
+
 **Situation**:
 The live state of a game in progress: which team has the ball, down and distance, field position, red zone, timeouts left, and the last play.
 _Avoid_: Context, live context, game state
