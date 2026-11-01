@@ -37,6 +37,9 @@ func tickerLines(board scoreboard, favorite string, now time.Time, width int, ca
 			lines = append(lines, clipText(tickerLine(g, now), width))
 		}
 	}
+	for i, l := range lines {
+		lines[i] = plainText(l)
+	}
 	return lines
 }
 

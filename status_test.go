@@ -282,3 +282,17 @@ func TestRunWatchStopsOnCancel(t *testing.T) {
 		t.Fatalf("ticker missing game:\n%s", out.String())
 	}
 }
+
+func TestStatusOutputStripsControlCharacters(t *testing.T) {
+	board := statusBoard("in", "2:14\x1b[31m", 4, "In Progress", "2:14 - 4th\r\n", "19", "27", "", false)
+	board.Events[0].Competitions[0].Competitors[0].Team.Abbreviation = "CAR\x07"
+	now := time.Date(2026, 11, 1, 14, 30, 0, 0, time.UTC)
+	if got := statusLine(board, "GB", now, time.Time{}); got != "GB 27-19 CAR · Q4 2:14[31m" {
+		t.Fatalf("status line not sanitized: %q", got)
+	}
+	for _, l := range tickerLines(board, "GB", now, 80, false) {
+		if strings.ContainsAny(l, "\x1b\x07\r\n") {
+			t.Fatalf("ticker line not sanitized: %q", l)
+		}
+	}
+}
