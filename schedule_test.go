@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"strings"
 	"testing"
+	"time"
 )
 
 func scheduleJSON(team string) string {
@@ -85,5 +86,57 @@ func TestFavoriteSeasonPageUnchanged(t *testing.T) {
 	}
 	if !strings.Contains(before, "GREEN BAY PACKERS") {
 		t.Fatalf("favorite page lost its header:\n%s", before)
+	}
+}
+
+func dashboardModel(t *testing.T) model {
+	t.Helper()
+	m := favoriteSeasonModel(t)
+	m.board = boardAt(t, "1", "pre", "", "")
+	return m
+}
+
+func TestPickerOpensFromDashboardAndHome(t *testing.T) {
+	m := dashboardModel(t)
+	m.width, m.height = 80, 24
+	m = key(m, "t")
+	if !m.showPicker {
+		t.Fatal("t on the dashboard must open the picker")
+	}
+	view := m.View()
+	if !strings.Contains(view, "TEAM SCHEDULES") || !strings.Contains(view, "Green Bay") {
+		t.Fatalf("picker view:\n%s", view)
+	}
+	if n := strings.Count(view, "\n") + 1; n > 24 {
+		t.Fatalf("picker overflowed: %d lines", n)
+	}
+	home := dashboardModel(t)
+	home.showHome = true
+	home.homeSelection = 6
+	home = key(home, "enter")
+	if !home.showPicker || home.showHome {
+		t.Fatal("home item 6 must open the picker")
+	}
+}
+
+func TestPickerTypeToJumpAndEnter(t *testing.T) {
+	m := dashboardModel(t).openPicker()
+	now := time.Date(2026, 11, 1, 12, 0, 0, 0, time.UTC)
+	m, _ = m.updatePickerKey("d", now)
+	m, _ = m.updatePickerKey("e", now.Add(200*time.Millisecond))
+	if got := nflTeams[m.pickerIndex].abbreviation; got != "DEN" {
+		t.Fatalf("after d,e want DEN got %s", got)
+	}
+	m, _ = m.updatePickerKey("t", now.Add(400*time.Millisecond))
+	if got := nflTeams[m.pickerIndex].abbreviation; got != "DET" {
+		t.Fatalf("after d,e,t want DET got %s", got)
+	}
+	m, _ = m.updatePickerKey("k", now.Add(3*time.Second))
+	if got := nflTeams[m.pickerIndex].abbreviation; got != "KC" {
+		t.Fatalf("after timeout and k want KC got %s", got)
+	}
+	m, cmd := m.updatePickerKey("enter", now.Add(4*time.Second))
+	if !m.showTeam || m.viewTeam != "KC" || m.showPicker || cmd == nil {
+		t.Fatalf("enter: showTeam %v viewTeam %q showPicker %v", m.showTeam, m.viewTeam, m.showPicker)
 	}
 }
