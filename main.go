@@ -825,6 +825,12 @@ func main() {
 		if *refresh {
 			os.Exit(runRefresh(api, *season, *week, *seasonType))
 		}
+		if *watch && !*split {
+			ctx, stop := watchContext()
+			code := runWatch(ctx, api, team.abbreviation, *season, *week, *seasonType, os.Stdout, 30*time.Second)
+			stop()
+			os.Exit(code)
+		}
 		if !*watch && !*split {
 			self, err := os.Executable()
 			if err != nil {
