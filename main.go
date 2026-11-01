@@ -107,6 +107,8 @@ type model struct {
 	compact                  bool
 	feed                     []scoringEvent
 	feedPending              map[string]int
+	viewTeam                 string
+	view                     teamPage
 }
 
 func (m model) loadBoard() tea.Cmd {
@@ -132,20 +134,9 @@ func (m model) loadStandings() tea.Cmd {
 	}
 }
 
-func (m model) loadTeam() tea.Cmd {
-	season, team := m.season, m.favorite
-	return func() tea.Msg {
-		data, err := m.api.teamSchedule(context.Background(), team, season)
-		return teamScheduleMsg{season, team, data, err}
-	}
-}
-
+func (m model) loadTeam() tea.Cmd { return m.loadTeamFor(m.favorite) }
 func (m model) loadTeamLeaders(data teamSchedule) tea.Cmd {
-	season, team := m.season, m.favorite
-	return func() tea.Msg {
-		leaders, err := m.api.teamLeaders(context.Background(), team, data)
-		return teamLeadersMsg{season, team, leaders, err}
-	}
+	return m.loadTeamLeadersFor(m.favorite, data)
 }
 
 func (m model) teamScheduleDue() bool {
@@ -170,6 +161,7 @@ func (m model) visibleGames() []game {
 }
 
 func (m model) openFavoriteSeason(notice string) (model, tea.Cmd) {
+	m.viewTeam = ""
 	m.teamFromHome = m.showHome
 	m.showHome = false
 	m.showTeam = true
@@ -251,11 +243,12 @@ func (m model) scrollBy(delta int) model {
 	case m.showStandings:
 		m.standingsScroll = max(0, min(m.standingsScroll+delta, m.maxStandingsScroll()))
 	case m.showTeam:
-		if len(m.teamData.Events) == 0 {
+		events := m.activeTeamPage().Data.Events
+		if len(events) == 0 {
 			m.teamScroll = max(0, min(m.teamScroll+delta, m.maxTeamScroll()))
 			break
 		}
-		m.teamSelected = max(0, min(m.teamSelected+delta, len(m.teamData.Events)-1))
+		m.teamSelected = max(0, min(m.teamSelected+delta, len(events)-1))
 		selectedLine := m.teamSelectedLine()
 		if selectedLine < m.teamScroll {
 			m.teamScroll = selectedLine
@@ -434,7 +427,13 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 		}
 	case teamScheduleMsg:
-		if msg.season != m.season || msg.team != m.favorite {
+		if msg.season != m.season {
+			break
+		}
+		if msg.team != m.favorite {
+			if msg.team == m.viewTeam {
+				return m.applyViewSchedule(msg)
+			}
 			break
 		}
 		m.teamLoading = false
@@ -456,7 +455,13 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m, m.loadTeamLeaders(msg.data)
 		}
 	case teamLeadersMsg:
-		if msg.season != m.season || msg.team != m.favorite {
+		if msg.season != m.season {
+			break
+		}
+		if msg.team != m.favorite {
+			if msg.team == m.viewTeam {
+				m = m.applyViewLeaders(msg)
+			}
 			break
 		}
 		m.teamLeaders = msg.leaders
@@ -580,8 +585,8 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				next, cmd := m.openHomeSelection()
 				return next, cmd
 			}
-			if m.showTeam && m.teamSeason == m.season && len(m.teamData.Events) > 0 {
-				event := m.teamData.Events[m.teamSelected]
+			if page := m.activeTeamPage(); m.showTeam && page.Season == m.season && len(page.Data.Events) > 0 {
+				event := page.Data.Events[min(m.teamSelected, len(page.Data.Events)-1)]
 				m.detailID = event.ID
 				m.detailGame = event.toGame()
 				for _, current := range m.board.Events {
