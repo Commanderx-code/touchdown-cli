@@ -109,6 +109,7 @@ td -compact                      # Use the compact layout
 td -notify                       # Alert for favorite-team scores and finals
 td -notify-all                   # Alert for all scores and finals
 td -status                       # Print one line for a shell prompt (see below)
+td -status -live                 # Same, but only while the game is in progress
 td -status -watch                # Redraw a scoreboard ticker every 30 seconds
 td -status -split                # Open the ticker in a new multiplexer pane
 ```
@@ -128,6 +129,8 @@ GB @ DET · Sun 1:00 PM
 ```
 
 The score always reads favorite first. `BALL` means your team has possession and `RZ` that it is in the red zone. On a bye week the line is empty, so prompt segments disappear. It never waits on the network: it prints from the local cache and, when that is older than 30 seconds, starts a short background refresh so the next prompt is current. The first run after install prints nothing until that refresh lands. Data older than five minutes is marked `(cached)`.
+
+`td -status -live` prints the line only while the game is in progress, so a prompt segment appears during games and disappears otherwise.
 
 For [Starship](https://starship.rs), add to `~/.config/starship.toml`:
 
