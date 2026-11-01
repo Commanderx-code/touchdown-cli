@@ -5,6 +5,7 @@ import (
 	"strconv"
 	"strings"
 	"time"
+	"unicode"
 )
 
 // favoriteGame returns the first game on the board involving the favorite
@@ -52,7 +53,18 @@ func statusLine(board scoreboard, favorite string, now time.Time, cachedAt time.
 	if !cachedAt.IsZero() && now.Sub(cachedAt) > 5*time.Minute {
 		line += " (cached)"
 	}
-	return line
+	return plainText(line)
+}
+
+// plainText drops control runes from text that came from the network, so
+// nothing ESPN sends can inject escape sequences into a prompt or pane.
+func plainText(s string) string {
+	return strings.Map(func(r rune) rune {
+		if unicode.IsControl(r) {
+			return -1
+		}
+		return r
+	}, s)
 }
 
 func kickoffLabel(g game, now time.Time) string {
