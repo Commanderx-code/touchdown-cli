@@ -45,6 +45,12 @@ func (m model) pickerScrollFor(index int) int {
 // updatePickerKey moves the cursor, jumps by typed abbreviation prefix, opens
 // the chosen team's season page on Enter, and leaves on Esc.
 func (m model) updatePickerKey(key string, now time.Time) (model, tea.Cmd) {
+	if m.season == 0 {
+		if key == "esc" || key == "backspace" {
+			return m.back()
+		}
+		return m, nil
+	}
 	page := m.pickerPageSize()
 	switch key {
 	case "up":
@@ -97,6 +103,9 @@ func (m model) renderPicker(width int) string {
 	height := m.height
 	if height <= 0 {
 		height = 24
+	}
+	if m.season == 0 {
+		return clipStyled(accentStyle.Render("◆  TEAM SCHEDULES"), width) + "\n" + dimStyle.Render("Loading season…") + "\n" + dimStyle.Render("Esc back  ·  q quit")
 	}
 	selected := nflTeams[m.pickerIndex]
 	if height < 14 || width < 30 {

@@ -47,7 +47,14 @@ func (m model) back() (model, tea.Cmd) {
 	case "picker":
 		m.showPicker = true
 	case "season":
-		return m.openTeamSeason(target.Team)
+		// The favorite's page remembers whether it came from home; opening a
+		// viewed team never changed that, so restore it after the reload.
+		fromHome := m.teamFromHome
+		next, cmd := m.openTeamSeason(target.Team)
+		if next.showingFavorite() {
+			next.teamFromHome = fromHome
+		}
+		return next, cmd
 	case "overview":
 		m.showOverview = true
 	}
@@ -72,7 +79,7 @@ func (m model) jumpToOpponent() (model, tea.Cmd) {
 	}
 	event := page.Data.Events[max(0, min(m.teamSelected, len(page.Data.Events)-1))]
 	opponent, _, _ := event.matchup(page.Team)
-	if opponent == "" {
+	if opponent == "" || opponent == "-" {
 		return m, nil
 	}
 	m = m.push(backTarget{Screen: "season", Team: page.Team})

@@ -79,7 +79,7 @@ func (m model) View() string {
 		footer = "1/2/3/4 tabs  ·  ↑/↓ scroll  ·  Esc back  ·  r refresh  ·  q quit"
 	}
 	if width < 100 && !m.showStandings && !m.showDetail && !m.showTeam {
-		footer = fmt.Sprintf("↑/↓ · Enter · g %s · p season · t teams · c settings · ? help · q", m.favorite)
+		footer = fmt.Sprintf("↑/↓ · Enter · g %s · p season · t teams · s standings · c settings · ? help · q", m.favorite)
 	}
 	if width < 68 {
 		if m.showStandings {
