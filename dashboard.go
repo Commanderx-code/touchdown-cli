@@ -81,7 +81,10 @@ func (m model) favoriteRecord() string {
 	return ""
 }
 
-func (m model) spotlightPanel(inner int) string {
+// spotlightPanel renders the favorite-team card. maxLines bounds its inner
+// line count; live detail (situation, timeouts, latest play) yields first,
+// latest play before timeouts before situation.
+func (m model) spotlightPanel(inner, maxLines int) string {
 	label := favoriteLabel(m.favorite)
 	week, hasWeek := m.favoriteMatch()
 	if hasWeek {
@@ -155,8 +158,9 @@ func (m model) spotlightPanel(inner int) string {
 		lines = append(lines, textStyle.Render(clipText(message, inner)))
 		lines = append(lines, dimStyle.Render("Use ←/→ to browse other weeks"))
 	}
+	var live []string
 	if hasWeek && week.Status.Type.State == "in" {
-		lines = append(lines, spotlightLiveLines(week, inner)...)
+		live = spotlightLiveLines(week, inner)
 	}
 	lastLine := ""
 	if last != nil {
@@ -168,10 +172,62 @@ func (m model) spotlightPanel(inner int) string {
 	if hasWeek && week.Status.Type.State == "post" && (last == nil || last.ID == week.ID || week.dateTime().After(last.dateTime())) {
 		lastLine = favoriteGameResult(week, m.favorite)
 	}
+	reserved := len(lines)
+	if lastLine != "" {
+		reserved++
+	}
+	if maxLines > 0 {
+		live = live[:max(0, min(len(live), maxLines-reserved))]
+	}
+	lines = append(lines, live...)
 	if lastLine != "" {
 		lines = append(lines, sectionStyle.Render(clipText(lastLine, inner)))
 	}
 	return framedLines(lines, inner)
+}
+
+// lineCount is the number of terminal lines a rendered block occupies.
+func lineCount(block string) int {
+	if block == "" {
+		return 0
+	}
+	return strings.Count(block, "\n") + 1
+}
+
+// feedPanel renders the newest scoring events, at most entries of them.
+func (m model) feedPanel(inner, entries int) string {
+	lines := []string{sectionStyle.Render("SCORING FEED"), borderStyle.Render(strings.Repeat("─", inner))}
+	if len(m.feed) == 0 {
+		lines = append(lines, dimStyle.Render("No scores yet this session"))
+		return framedLines(lines, inner)
+	}
+	for _, e := range m.feed[:min(entries, len(m.feed))] {
+		line := clipText(e.feedLine(), inner)
+		if e.Favorite {
+			lines = append(lines, accentStyle.Render(line))
+		} else {
+			lines = append(lines, textStyle.Render(line))
+		}
+	}
+	return framedLines(lines, inner)
+}
+
+// feedLineNarrow is the single newest feed entry for the narrow dashboard,
+// or "" when the feed is empty.
+func (m model) feedLineNarrow(width int) string {
+	if len(m.feed) == 0 {
+		return ""
+	}
+	return centerLine(liveStyle.Render(clipText("⚡ "+m.feed[0].feedLine(), width)), width)
+}
+
+// panelBudget is the number of lines View leaves for the dashboard panel:
+// header, subhead, a blank line, a blank line and the footer surround it.
+func (m model) panelBudget() int {
+	if m.height <= 0 {
+		return 1 << 20
+	}
+	return m.height - 5
 }
 
 // spotlightLiveLines adds the situation, timeouts and latest play (at most
@@ -313,46 +369,53 @@ func (m model) snapshotPanel(inner int) string {
 	return framedLines(lines, inner)
 }
 
-func (m model) shortcutsPanel(inner int) string {
-	lines := []string{
-		sectionStyle.Render("QUICK KEYS"),
-		borderStyle.Render(strings.Repeat("─", inner)),
-		dimStyle.Render("Enter  game details"),
-		dimStyle.Render("g      favorite game"),
-		dimStyle.Render("p      " + favoriteLabel(m.favorite) + " season"),
-		dimStyle.Render("s      full standings"),
-		dimStyle.Render("f      favorite filter"),
-		dimStyle.Render("c      team / theme settings"),
-		dimStyle.Render("?      help and score legend"),
-	}
-	return framedLines(lines, inner)
-}
-
 func (m model) narrowDashboard(inner int) string {
 	width := m.width
 	if width <= 0 {
 		width = 80
 	}
+	feedLine := m.feedLineNarrow(width)
+	// Reserve the summary, the feed line, the list frame and two header rows,
+	// and keep at least one game row (two lines) when sizing the spotlight.
+	spotlightMax := m.panelBudget() - 1 - lineCount(feedLine) - 2 - 2 - 2 - 2
+	spotlight := m.spotlightPanel(inner, max(3, spotlightMax))
 	rows := len(m.visibleGames())
 	if m.height > 0 {
-		rows = min(rows, max(1, (m.height-16)/2))
+		used := 1 + lineCount(feedLine) + lineCount(spotlight) + 4
+		rows = min(rows, max(1, (m.panelBudget()-used)/2))
 	}
-	block := m.dashboardSummary(width) + "\n" +
-		centerBlock(m.spotlightPanel(inner), width) + "\n" +
-		centerBlock(m.scoreboardPanel(inner, rows), width)
-	return block
+	parts := []string{m.dashboardSummary(width)}
+	if feedLine != "" {
+		parts = append(parts, feedLine)
+	}
+	parts = append(parts, centerBlock(spotlight, width), centerBlock(m.scoreboardPanel(inner, rows), width))
+	return strings.Join(parts, "\n")
 }
 
 func (m model) wideDashboard() string {
 	leftInner := min(74, max(58, m.width*58/100-4))
 	rightInner := min(48, max(32, m.width-leftInner-15))
+	budget := m.panelBudget() - 2 // summary line and the blank line below it
+	snapshot := m.snapshotPanel(rightInner)
+	// Smallest feed panel: frame, header, rule, one entry.
+	const minFeed = 5
+	spotlight := m.spotlightPanel(rightInner, budget-lineCount(snapshot)-minFeed-2)
+	remaining := budget - lineCount(spotlight) - lineCount(snapshot) - 4
+	right := []string{spotlight}
+	if len(m.feed) == 0 {
+		if remaining >= 1 {
+			right = append(right, m.feedPanel(rightInner, 0))
+		}
+	} else if entries := min(6, len(m.feed), remaining); entries >= 1 {
+		right = append(right, m.feedPanel(rightInner, entries))
+	}
+	right = append(right, snapshot)
 	rows := len(m.visibleGames())
 	if m.height > 0 {
-		rows = min(rows, max(1, (m.height-12)/2))
+		rows = min(rows, max(1, (budget-4)/2))
 	}
 	left := m.scoreboardPanel(leftInner, rows)
-	right := strings.Join([]string{m.spotlightPanel(rightInner), m.snapshotPanel(rightInner), m.shortcutsPanel(rightInner)}, "\n")
-	return m.dashboardSummary(m.width) + "\n\n" + centerBlock(joinBlocks(left, right, 3), m.width)
+	return m.dashboardSummary(m.width) + "\n\n" + centerBlock(joinBlocks(left, strings.Join(right, "\n"), 3), m.width)
 }
 
 func joinBlocks(left, right string, gap int) string {
