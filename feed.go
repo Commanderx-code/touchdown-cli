@@ -121,6 +121,9 @@ func enrichEvent(e scoringEvent, detail gameDetail) (scoringEvent, bool) {
 		if e.PlayType == "" {
 			e.PlayType = fmt.Sprintf("+%d", e.Points)
 		}
+		if play.ScoreTeam.Abbreviation != "" {
+			e.Team = play.ScoreTeam.Abbreviation
+		}
 		e.PlayText = strings.Join(strings.Fields(play.Text), " ")
 		return e, true
 	}
@@ -128,18 +131,20 @@ func enrichEvent(e scoringEvent, detail gameDetail) (scoringEvent, bool) {
 }
 
 // pushFeed prepends new scoring events, drops plain finals, and keeps the
-// newest feedLimit entries.
-func pushFeed(feed []scoringEvent, events []scoringEvent) []scoringEvent {
+// newest feedLimit entries. It also returns how many events it added.
+func pushFeed(feed []scoringEvent, events []scoringEvent) ([]scoringEvent, int) {
+	added := 0
 	for _, e := range events {
 		if e.Points == 0 {
 			continue
 		}
 		feed = append([]scoringEvent{e}, feed...)
+		added++
 	}
 	if len(feed) > feedLimit {
 		feed = feed[:feedLimit]
 	}
-	return feed
+	return feed, added
 }
 
 func (m model) loadFeedDetail(id string) tea.Cmd {
@@ -154,15 +159,15 @@ func (m model) loadFeedDetail(id string) tea.Cmd {
 // still waiting on a matching play. A game open in the game center is
 // skipped because its own refresh delivers the same summary.
 func (m model) recordScoring(events []scoringEvent) (model, []tea.Cmd) {
-	before := len(m.feed)
-	m.feed = pushFeed(m.feed, events)
+	var added int
+	m.feed, added = pushFeed(m.feed, events)
 	if m.feedPending == nil {
 		m.feedPending = map[string]int{}
 	}
-	for _, e := range m.feed[:len(m.feed)-min(before, len(m.feed))] {
-		if _, pending := m.feedPending[e.GameID]; !pending {
-			m.feedPending[e.GameID] = -1
-		}
+	// Every new score restarts its game's retry budget, so an earlier
+	// unmatched entry never blocks lookups for later scores.
+	for _, e := range m.feed[:min(added, len(m.feed))] {
+		m.feedPending[e.GameID] = -1
 	}
 	var cmds []tea.Cmd
 	for id, retries := range m.feedPending {

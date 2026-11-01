@@ -88,12 +88,12 @@ func TestEnrichEventMatchesScores(t *testing.T) {
 func TestPushFeedCapsAndSkipsZero(t *testing.T) {
 	var feed []scoringEvent
 	for i := 1; i <= 25; i++ {
-		feed = pushFeed(feed, []scoringEvent{{GameID: "1", Points: 3, HomeScore: i}})
+		feed, _ = pushFeed(feed, []scoringEvent{{GameID: "1", Points: 3, HomeScore: i}})
 	}
 	if len(feed) != 20 || feed[0].HomeScore != 25 || feed[19].HomeScore != 6 {
 		t.Fatalf("cap/order wrong: len %d first %d last %d", len(feed), feed[0].HomeScore, feed[19].HomeScore)
 	}
-	if got := pushFeed(nil, []scoringEvent{{GameID: "1", Points: 0, Final: true}}); len(got) != 0 {
+	if got, added := pushFeed(nil, []scoringEvent{{GameID: "1", Points: 0, Final: true}}); len(got) != 0 || added != 0 {
 		t.Fatalf("plain finals must not enter the feed: %+v", got)
 	}
 }
@@ -273,5 +273,65 @@ func TestNarrowDashboardFeedLine(t *testing.T) {
 	m.feed = nil
 	if view := m.View(); strings.Contains(view, "⚡") {
 		t.Fatalf("empty feed must not draw a line:\n%s", view)
+	}
+}
+
+func countFeedFetches(cmd tea.Cmd) int {
+	n := 0
+	for _, msg := range runCmds(cmd) {
+		if _, ok := msg.(feedDetailMsg); ok {
+			n++
+		}
+	}
+	return n
+}
+
+func TestFullFeedStillFetchesNewScores(t *testing.T) {
+	var requests int32
+	m := feedModel(t, "", &requests)
+	m.feed = sampleFeed(20)
+	for i := range m.feed {
+		m.feed[i].PlayText = "done"
+	}
+	next, cmd := m.Update(boardMsg{board: boardAt(t, "1", "in", "19", "27"), season: 2026, week: 9, seasonType: 2})
+	m = next.(model)
+	if len(m.feed) != 20 || m.feed[0].HomeScore != 27 || m.feed[0].PlayText != "" {
+		t.Fatalf("new score not at the head of a full feed: %+v", m.feed[0])
+	}
+	if got := countFeedFetches(cmd); got != 1 {
+		t.Fatalf("full feed must still fetch the new score's play, got %d fetches", got)
+	}
+}
+
+func TestExhaustedGameFetchesAgainOnNewScore(t *testing.T) {
+	var requests int32
+	m := feedModel(t, "", &requests)
+	next, cmd := m.Update(boardMsg{board: boardAt(t, "1", "in", "19", "26"), season: 2026, week: 9, seasonType: 2})
+	m = next.(model)
+	total := countFeedFetches(cmd)
+	for i := 0; i < 3; i++ {
+		next, cmd = m.Update(boardMsg{board: boardAt(t, "1", "in", "19", "26"), season: 2026, week: 9, seasonType: 2})
+		m = next.(model)
+		total += countFeedFetches(cmd)
+	}
+	if total != 3 {
+		t.Fatalf("setup: expected 3 fetches before exhaustion, got %d", total)
+	}
+	next, cmd = m.Update(boardMsg{board: boardAt(t, "1", "in", "19", "27"), season: 2026, week: 9, seasonType: 2})
+	m = next.(model)
+	if got := countFeedFetches(cmd); got != 1 {
+		t.Fatalf("a new score after exhaustion must fetch again, got %d", got)
+	}
+}
+
+func TestEnrichEventTakesScorerFromPlay(t *testing.T) {
+	api := jsonClient(t, func(*http.Request) {}, `{"scoringPlays":[{"id":"a","text":"E.Pineiro 40 yd Field Goal","awayScore":22,"homeScore":27,"scoringType":{"abbreviation":"FG"},"team":{"abbreviation":"CAR"}}]}`)
+	detail, err := api.summary(context.Background(), "1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	got, ok := enrichEvent(scoringEvent{GameID: "1", Team: "GB", Points: 7, AwayScore: 22, HomeScore: 27}, detail)
+	if !ok || got.Team != "CAR" || got.PlayType != "FG" {
+		t.Fatalf("scorer should follow the matched play: %+v", got)
 	}
 }
