@@ -105,7 +105,7 @@ func (m model) teamPageSize() int {
 		return max(1, m.height-4)
 	}
 	if m.height > 0 {
-		return max(1, m.height-9)
+		return max(1, m.height-10)
 	}
 	return len(m.teamLines())
 }

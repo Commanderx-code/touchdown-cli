@@ -131,6 +131,9 @@ func experienceLabel(p rosterPlayer) string {
 	case p.Years == 0:
 		return "Rookie"
 	}
+	if p.Years == 1 {
+		return "1 yr"
+	}
 	return fmt.Sprintf("%d yrs", p.Years)
 }
 

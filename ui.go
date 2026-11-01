@@ -51,10 +51,7 @@ func (m model) View() string {
 	if m.compact || m.height > 0 && m.height < 16 {
 		return m.compactView(width)
 	}
-	inner := max(28, min(74, width-6))
-	if inner+4 > width {
-		inner = max(12, width-4)
-	}
+	inner := panelInner(width)
 
 	header := centerLine(accentStyle.Render("◆  TOUCHDOWN"), width)
 	season := "NFL COMMAND CENTER  ·  LIVE SCORES AND STATS"
@@ -103,6 +100,15 @@ func (m model) View() string {
 		}
 	}
 	return screen
+}
+
+// panelInner is the width inside the main panel frame at a terminal width.
+func panelInner(width int) int {
+	inner := max(28, min(74, width-6))
+	if inner+4 > width {
+		inner = max(12, width-4)
+	}
+	return inner
 }
 
 func (m model) compactView(width int) string {

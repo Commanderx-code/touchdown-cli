@@ -158,9 +158,6 @@ func (m model) spotlightPanel(inner, maxLines int) string {
 		lines = append(lines, textStyle.Render(clipText(message, inner)))
 		lines = append(lines, dimStyle.Render("Use ←/→ to browse other weeks"))
 	}
-	if injuries := m.spotlightInjuryLine(); injuries != "" {
-		lines = append(lines, dimStyle.Render(clipText(injuries, inner)))
-	}
 	var live []string
 	if hasWeek && week.Status.Type.State == "in" {
 		live = spotlightLiveLines(week, inner)
@@ -177,6 +174,16 @@ func (m model) spotlightPanel(inner, maxLines int) string {
 	}
 	reserved := len(lines)
 	if lastLine != "" {
+		reserved++
+	}
+	// On a short panel the last result yields, then the injury count.
+	if maxLines > 0 && reserved > maxLines && lastLine != "" {
+		lastLine = ""
+		reserved--
+	}
+	// The injury count yields first when the panel is short.
+	if injuries := m.spotlightInjuryLine(); injuries != "" && (maxLines <= 0 || reserved+1 <= maxLines) {
+		lines = append(lines, dimStyle.Render(clipText(injuries, inner)))
 		reserved++
 	}
 	if maxLines > 0 {

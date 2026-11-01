@@ -6,12 +6,14 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"regexp"
 	"sort"
 	"strings"
 	"testing"
 	"time"
 
 	tea "github.com/charmbracelet/bubbletea"
+	"github.com/charmbracelet/lipgloss"
 )
 
 const injuriesJSON = `{"injuries":[
@@ -335,7 +337,13 @@ func TestEnterOnRosterOpensPlayerCardWithStats(t *testing.T) {
 	if !m.showPlayer || m.player.ID != "4036378" {
 		t.Fatalf("enter on Love: showPlayer %v player %+v", m.showPlayer, m.player)
 	}
-	if len(seen) != 1 || !strings.Contains(seen[0], "/athletes/4036378/overview") {
+	overviews := 0
+	for _, u := range seen {
+		if strings.Contains(u, "/athletes/4036378/overview") {
+			overviews++
+		}
+	}
+	if overviews != 1 {
 		t.Fatalf("card must fetch the overview once: %v", seen)
 	}
 	view := m.View()
@@ -551,3 +559,143 @@ func TestFootersAndHelpMentionTabs(t *testing.T) {
 		t.Fatal("help must mention the season page tabs")
 	}
 }
+
+// Fix-pass tests from the whole-branch review.
+
+func bigRosterJSON(n int) string {
+	var items []string
+	for i := 0; i < n; i++ {
+		items = append(items, fmt.Sprintf(`{"id":"%d","displayName":"Player Number %d","jersey":"%d","position":{"abbreviation":"WR"},"age":25,"displayHeight":"6' 1\"","displayWeight":"200 lbs","experience":{"years":%d},"college":{"shortName":"Wake Forest"},"status":{"name":"Active"},"injuries":[{"status":"Out"}]}`, i, i, i, i%3))
+	}
+	return `{"athletes":[{"position":"offense","items":[` + strings.Join(items, ",") + `]}]}`
+}
+
+func TestRosterRowsFitTheFrameAndKeepBadges(t *testing.T) {
+	m := seasonTabsModel(t, nil)
+	m.width, m.height = 100, 30
+	m = press(t, m, "2")
+	m = m.applyRoster(rosterMsg{team: "GB", data: mustRoster(t, bigRosterJSON(3))})
+	view := m.View()
+	if !strings.Contains(view, "Wake Forest  OUT") {
+		t.Fatalf("badge must survive the frame width at 100 columns:\n%s", view)
+	}
+	for _, line := range strings.Split(view, "\n") {
+		if w := lipglossWidth(line); w > 100 {
+			t.Fatalf("line wider than the terminal (%d): %q", w, line)
+		}
+	}
+}
+
+func TestLongTabsFitTheTerminal(t *testing.T) {
+	for _, size := range [][2]int{{80, 24}, {100, 30}, {60, 20}} {
+		m := seasonTabsModel(t, nil)
+		m.width, m.height = size[0], size[1]
+		m = press(t, m, "2")
+		m = m.applyRoster(rosterMsg{team: "GB", data: mustRoster(t, bigRosterJSON(40))})
+		if lines := strings.Count(m.View(), "\n") + 1; lines > size[1] {
+			t.Errorf("roster tab at %dx%d has %d lines", size[0], size[1], lines)
+		}
+		m.teamTab = tabSchedule
+		if lines := strings.Count(m.View(), "\n") + 1; lines > size[1] {
+			t.Errorf("schedule tab at %dx%d has %d lines", size[0], size[1], lines)
+		}
+	}
+}
+
+func mustRoster(t *testing.T, body string) roster {
+	t.Helper()
+	r, err := jsonClient(t, func(*http.Request) {}, body).roster(context.Background(), "GB")
+	if err != nil {
+		t.Fatal(err)
+	}
+	return r
+}
+
+func TestSpotlightInjuryLineYieldsOnShortTerminals(t *testing.T) {
+	m := model{season: 2026, week: 9, seasonType: 2, favorite: "GB", teamSeason: 2026, teamData: decodeSchedule(t, "GB"), width: 80, board: boardAt(t, "1", "in", "19", "20")}
+	m, _ = m.recordScoring(scoringEvents(boardAt(t, "1", "in", "19", "13"), m.board, "GB"))
+	m, _ = m.recordScoring(scoringEvents(boardAt(t, "1", "in", "12", "13"), boardAt(t, "1", "in", "19", "13"), "GB"))
+	report, _ := jsonClient(t, func(*http.Request) {}, injuriesJSON).injuries(context.Background(), "GB")
+	m = m.applyInjuries(injuriesMsg{team: "GB", report: report})
+	for _, height := range []int{18, 20, 24} {
+		m.height = height
+		if lines := strings.Count(m.View(), "\n") + 1; lines > height {
+			t.Errorf("dashboard at 80x%d has %d lines", height, lines)
+		}
+	}
+	m.height = 30
+	if !strings.Contains(m.View(), "INJURIES  1 OUT · 1 Q") {
+		t.Fatal("injury line must show when there is room")
+	}
+}
+
+func TestCardFromRosterRowShowsInjuryStatus(t *testing.T) {
+	var seen []string
+	m := seasonTabsModel(t, &seen)
+	m = press(t, m, "2")
+	m = m.applyRoster(rosterMsg{team: "GB", data: mustRoster(t, bigRosterJSON(2))})
+	seen = nil
+	m = press(t, m, "enter")
+	if !m.showPlayer {
+		t.Fatal("card must open")
+	}
+	if len(injuryRequests(seen)) != 1 {
+		t.Fatalf("opening a card must request the team's injury report: %v", seen)
+	}
+	if view := m.View(); !strings.Contains(view, "OUT") {
+		t.Fatalf("card must show the roster row's injury status:\n%s", view)
+	}
+}
+
+func TestSelectionClampsAfterShorterRefresh(t *testing.T) {
+	m := seasonTabsModel(t, nil)
+	m = press(t, m, "2")
+	m = m.applyRoster(rosterMsg{team: "GB", data: mustRoster(t, bigRosterJSON(5))})
+	m.rosterSelected = 4
+	m = m.applyRoster(rosterMsg{team: "GB", data: mustRoster(t, bigRosterJSON(2))})
+	if !strings.Contains(m.View(), "Player Number 1") {
+		t.Fatal("roster must render")
+	}
+	m = press(t, m, "enter")
+	if !m.showPlayer || m.player.Name != "Player Number 1" {
+		t.Fatalf("enter must open the last row when the selection is past the end: %+v", m.player)
+	}
+}
+
+func TestResizeClampsNewScrolls(t *testing.T) {
+	m := seasonTabsModel(t, nil)
+	m = press(t, m, "2")
+	m = m.applyRoster(rosterMsg{team: "GB", data: mustRoster(t, bigRosterJSON(40))})
+	m.rosterScroll, m.teamScroll, m.playerScroll = 30, 30, 30
+	next, _ := m.Update(tea.WindowSizeMsg{Width: 100, Height: 60})
+	m = next.(model)
+	if m.rosterScroll != 0 || m.playerScroll != 0 {
+		t.Fatalf("scrolls must clamp on resize: roster %d player %d", m.rosterScroll, m.playerScroll)
+	}
+	if m.teamScroll != 0 {
+		t.Fatalf("schedule scroll must clamp against the schedule tab, got %d", m.teamScroll)
+	}
+}
+
+func TestGameCenterTeamHeaderSanitized(t *testing.T) {
+	m := favoriteSeasonModel(t)
+	m.board = boardDated(t, time.Now().Add(-time.Hour))
+	m.board.Events[0].Competitions[0].Competitors[0].Team.Abbreviation = "CAR\x1b[31m"
+	m.detailID, m.detailGame, m.showDetail, m.detailTab = "1", m.board.Events[0], true, 3
+	m.width, m.height = 100, 36
+	if strings.Contains(m.View(), "\x1b[31mCAR\x1b[31m") || strings.Contains(stripANSI(m.View()), "CAR[31m") == false {
+		t.Fatalf("team header must be sanitized:\n%s", m.View())
+	}
+}
+
+func TestOneYearLabel(t *testing.T) {
+	if got := experienceLabel(rosterPlayer{Years: 1, HasYears: true}); got != "1 yr" {
+		t.Fatalf("got %q", got)
+	}
+}
+
+var ansiPattern = regexp.MustCompile("\x1b\\[[0-9;]*m")
+
+func stripANSI(s string) string { return ansiPattern.ReplaceAllString(s, "") }
+
+func lipglossWidth(line string) int { return lipgloss.Width(line) }

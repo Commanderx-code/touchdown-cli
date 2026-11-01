@@ -19,6 +19,7 @@ type playerRef struct {
 	Height   string
 	Weight   string
 	College  string
+	Injury   string // the roster row's status, shown until the injury report answers
 	Age      int
 	Years    int
 	HasYears bool
@@ -28,7 +29,7 @@ func playerFromRoster(p rosterPlayer, team, teamName string) playerRef {
 	return playerRef{
 		ID: p.ID, Name: p.Name, Position: p.Position, Team: team, TeamName: teamName,
 		Jersey: p.Jersey, Height: p.Height, Weight: p.Weight, College: p.College,
-		Age: p.Age, Years: p.Years, HasYears: p.HasYears,
+		Injury: p.Injury, Age: p.Age, Years: p.Years, HasYears: p.HasYears,
 	}
 }
 
@@ -55,7 +56,9 @@ func (m model) openPlayer(ref playerRef) (model, tea.Cmd) {
 	m.showPlayer = true
 	m.player = ref
 	m.playerScroll = 0
-	return m.requestPlayer(ref.ID, false)
+	m, stats := m.requestPlayer(ref.ID, false)
+	m, injuries := m.requestInjuries(ref.Team, false)
+	return m, tea.Batch(stats, injuries)
 }
 
 // openSelectedPlayer opens the card for the selected roster or injury row.
@@ -67,14 +70,12 @@ func (m model) openSelectedPlayer() (model, tea.Cmd) {
 	}
 	switch m.teamTab {
 	case tabRoster:
-		rows := m.rosterRows()
-		if m.rosterSelected < len(rows) {
-			return m.openPlayer(playerFromRoster(rows[m.rosterSelected], page.Team, teamName))
+		if rows := m.rosterRows(); len(rows) > 0 {
+			return m.openPlayer(playerFromRoster(rows[m.rosterIndex()], page.Team, teamName))
 		}
 	case tabInjuries:
-		rows := m.injuryRows()
-		if m.injurySelected < len(rows) {
-			return m.openPlayer(m.playerFromInjury(rows[m.injurySelected], page.Team, teamName))
+		if rows := m.injuryRows(); len(rows) > 0 {
+			return m.openPlayer(m.playerFromInjury(rows[m.injuryIndex()], page.Team, teamName))
 		}
 	}
 	return m, nil
@@ -134,19 +135,20 @@ func (m model) playerLines(inner int) []string {
 	if len(bio) > 0 {
 		lines = append(lines, dimStyle.Render(clipText(strings.Join(bio, "  ·  "), inner)))
 	}
-	if entry, ok := m.injuriesFor(p.Team); ok {
-		if i, found := entry.Report.find(p.ID); found {
-			parts := []string{statusLabel(i)}
-			for _, part := range []string{i.BodyPart, returnLabel(i.ReturnDate)} {
-				if part != "" {
-					parts = append(parts, part)
-				}
-			}
-			lines = append(lines, liveStyle.Render(clipText(strings.Join(parts, "  ·  "), inner)))
-			for _, part := range wrapWords(i.Comment, inner-2) {
-				lines = append(lines, dimStyle.Render("  "+part))
+	report, loaded := m.injuriesFor(p.Team)
+	if i, found := report.Report.find(p.ID); loaded && found {
+		parts := []string{statusLabel(i)}
+		for _, part := range []string{i.BodyPart, returnLabel(i.ReturnDate)} {
+			if part != "" {
+				parts = append(parts, part)
 			}
 		}
+		lines = append(lines, liveStyle.Render(clipText(strings.Join(parts, "  ·  "), inner)))
+		for _, part := range wrapWords(i.Comment, inner-2) {
+			lines = append(lines, dimStyle.Render("  "+part))
+		}
+	} else if badge := rosterBadge(rosterPlayer{Injury: p.Injury}); badge != "" {
+		lines = append(lines, liveStyle.Render(badge))
 	}
 	lines = append(lines, "", sectionStyle.Render("SEASON STATS"))
 	entry, ok := m.playerFor(p.ID)
