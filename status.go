@@ -39,10 +39,12 @@ func statusLine(board scoreboard, favorite string, now time.Time, cachedAt time.
 	pair := own.Team.Abbreviation + " " + location + " " + other.Team.Abbreviation
 	score := fmt.Sprintf("%s %s-%s %s", own.Team.Abbreviation, scoreOrZero(own.Score), scoreOrZero(other.Score), other.Team.Abbreviation)
 	var line string
-	switch g.Status.Type.State {
-	case "pre":
+	switch {
+	case notPlayed(g):
+		line = pair + " · " + g.Status.Type.ShortDetail
+	case g.Status.Type.State == "pre":
 		line = pair + " · " + kickoffLabel(g, now)
-	case "post":
+	case g.Status.Type.State == "post":
 		final := "Final"
 		if g.Status.Period > 4 {
 			final = "Final/OT"
@@ -68,9 +70,15 @@ func plainText(s string) string {
 	}, s)
 }
 
-func kickoffLabel(g game, now time.Time) string {
+// notPlayed reports a postponed or canceled game, which ESPN may list under
+// any state.
+func notPlayed(g game) bool {
 	desc := g.Status.Type.Description
-	if desc == "Postponed" || desc == "Canceled" {
+	return desc == "Postponed" || desc == "Canceled"
+}
+
+func kickoffLabel(g game, now time.Time) string {
+	if notPlayed(g) {
 		return g.Status.Type.ShortDetail
 	}
 	kickoff := g.dateTime()

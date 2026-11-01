@@ -134,10 +134,10 @@ command = "td -status"
 when = "command -v td"
 format = "🏈 [$output]($style) "
 style = "bold green"
-shell = ["sh", "--norc"]
+shell = ["sh"]
 ```
 
-`shell` keeps the segment from paying your interactive shell's start-up cost on every prompt.
+`shell = ["sh"]` runs the segment in plain `sh`, which skips your interactive shell's start-up files on every prompt.
 
 ### Ticker pane
 

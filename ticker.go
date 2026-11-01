@@ -45,7 +45,7 @@ func tickerLines(board scoreboard, favorite string, now time.Time, width int, ca
 
 func tickerLine(g game, now time.Time) string {
 	away, home := g.sides()
-	if g.Status.Type.State == "pre" {
+	if g.Status.Type.State == "pre" || notPlayed(g) {
 		return fmt.Sprintf("%-4s     %-4s      %s", away.Team.Abbreviation, home.Team.Abbreviation, kickoffLabel(g, now))
 	}
 	line := fmt.Sprintf("%-4s %2s  %-4s %2s   %s", away.Team.Abbreviation, scoreOrZero(away.Score), home.Team.Abbreviation, scoreOrZero(home.Score), g.statusText())

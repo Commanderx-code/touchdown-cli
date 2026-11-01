@@ -69,14 +69,22 @@ var realSpawnDetached = func(self string, args []string) error {
 var spawnDetached = realSpawnDetached
 
 // forwardedFlags re-emits the flags a status child must inherit, in
-// -name=value form, for those the user set explicitly.
-func forwardedFlags() []string {
+// -name=value form, for those the user set explicitly. A relative -config
+// path is made absolute because a new pane may start in another directory.
+func forwardedFlags(fs *flag.FlagSet) []string {
 	var args []string
-	flag.Visit(func(f *flag.Flag) {
+	fs.Visit(func(f *flag.Flag) {
+		value := f.Value.String()
 		switch f.Name {
-		case "favorite", "config", "season", "week", "type":
-			args = append(args, "-"+f.Name+"="+f.Value.String())
+		case "config":
+			if abs, err := filepath.Abs(value); err == nil {
+				value = abs
+			}
+		case "favorite", "season", "week", "type":
+		default:
+			return
 		}
+		args = append(args, "-"+f.Name+"="+value)
 	})
 	return args
 }

@@ -169,7 +169,7 @@ is accepted and means the same as `-split` alone.
   when = "command -v td"
   format = "🏈 [$output]($style) "
   style = "bold green"
-  shell = ["sh", "--norc"]
+  shell = ["sh"]
   ```
 
   Noting `shell` keeps the prompt from paying Fish start-up cost.
