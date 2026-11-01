@@ -771,6 +771,10 @@ func main() {
 	compact := flag.Bool("compact", false, "use a compact terminal layout")
 	notify := flag.Bool("notify", false, "desktop alerts for favorite team scores and finals")
 	notifyAll := flag.Bool("notify-all", false, "desktop alerts for all scores and finals (implies -notify)")
+	status := flag.Bool("status", false, "print a one-line favorite-team status for a shell prompt and exit")
+	watch := flag.Bool("watch", false, "with -status, redraw a scoreboard ticker every 30 seconds")
+	split := flag.Bool("split", false, "with -status, open the ticker in a new multiplexer pane")
+	refresh := flag.Bool("refresh", false, "refresh the status cache and exit (used by -status)")
 	flag.Parse()
 	if *setFavorite != "" {
 		team, err := saveFavorite(*configPath, *setFavorite)
@@ -816,6 +820,20 @@ func main() {
 		os.Exit(2)
 	}
 	api := newClient()
+	if *status {
+		api.http.Timeout = refreshTimeout
+		if *refresh {
+			os.Exit(runRefresh(api, *season, *week, *seasonType))
+		}
+		if !*watch && !*split {
+			self, err := os.Executable()
+			if err != nil {
+				fmt.Fprintln(os.Stderr, err)
+				os.Exit(1)
+			}
+			os.Exit(runStatusOnce(api.cacheDir, team.abbreviation, *season, *week, *seasonType, time.Now(), self, forwardedFlags(), os.Stdout))
+		}
+	}
 	if *once {
 		board, err := api.scoreboard(context.Background(), *season, *week, *seasonType)
 		if err != nil {

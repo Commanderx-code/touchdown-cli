@@ -3,6 +3,10 @@ package main
 import (
 	"context"
 	"net/http"
+	"os"
+	"path/filepath"
+	"reflect"
+	"strings"
 	"testing"
 	"time"
 )
@@ -100,5 +104,112 @@ func TestStatusLineNoGame(t *testing.T) {
 	}
 	if _, ok := favoriteGame(scoreboard{}, "GB"); ok {
 		t.Fatal("empty board must not find a game")
+	}
+}
+
+const liveBoardJSON = `{"week":{"number":9},"events":[{"id":"1","date":"2026-11-01T18:00Z","status":{"type":{"state":"in","shortDetail":"2:14 - 4th","description":"In Progress"},"displayClock":"2:14","period":4},"competitions":[{"situation":{"possession":"8","down":3,"distance":7,"isRedZone":false},"competitors":[{"homeAway":"home","score":"27","team":{"id":"8","abbreviation":"GB"}},{"homeAway":"away","score":"19","team":{"id":"29","abbreviation":"CAR"}}]}]}]}`
+
+func TestScoreboardURLMatchesCacheKey(t *testing.T) {
+	var seen []string
+	api := jsonClient(t, func(req *http.Request) { seen = append(seen, req.URL.String()) }, `{"week":{"number":7},"events":[{"id":"1"}]}`)
+	if _, err := api.scoreboard(context.Background(), 2026, 7, 2); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := api.scoreboard(context.Background(), 0, 0, 2); err != nil {
+		t.Fatal(err)
+	}
+	if len(seen) != 2 || seen[0] != scoreboardURL(2026, 7, 2) || seen[1] != scoreboardURL(0, 0, 2) {
+		t.Fatalf("urls %v vs %q %q", seen, scoreboardURL(2026, 7, 2), scoreboardURL(0, 0, 2))
+	}
+}
+
+func captureSpawns(t *testing.T) *[][]string {
+	t.Helper()
+	var spawned [][]string
+	spawnDetached = func(self string, args []string) error {
+		spawned = append(spawned, append([]string{self}, args...))
+		return nil
+	}
+	t.Cleanup(func() { spawnDetached = realSpawnDetached })
+	return &spawned
+}
+
+func TestRunStatusOnceReadsCacheWithoutNetwork(t *testing.T) {
+	dir := t.TempDir()
+	if err := writeCached(dir, scoreboardURL(0, 0, 2), []byte(liveBoardJSON)); err != nil {
+		t.Fatal(err)
+	}
+	spawned := captureSpawns(t)
+	var out strings.Builder
+	code := runStatusOnce(dir, "GB", 0, 0, 2, time.Now(), "/bin/td", []string{"-favorite=GB"}, &out)
+	if code != 0 || out.String() != "GB 27-19 CAR · Q4 2:14 · BALL\n" {
+		t.Fatalf("code %d out %q", code, out.String())
+	}
+	if len(*spawned) != 0 {
+		t.Fatalf("fresh cache must not spawn: %v", *spawned)
+	}
+}
+
+func TestRunStatusOnceSpawnsRefreshWhenStale(t *testing.T) {
+	dir := t.TempDir()
+	if err := writeCached(dir, scoreboardURL(0, 0, 2), []byte(liveBoardJSON)); err != nil {
+		t.Fatal(err)
+	}
+	old := time.Now().Add(-45 * time.Second)
+	if err := os.Chtimes(cachePath(dir, scoreboardURL(0, 0, 2)), old, old); err != nil {
+		t.Fatal(err)
+	}
+	spawned := captureSpawns(t)
+	var out strings.Builder
+	if code := runStatusOnce(dir, "GB", 0, 0, 2, time.Now(), "/bin/td", []string{"-favorite=GB"}, &out); code != 0 {
+		t.Fatal(code)
+	}
+	want := []string{"/bin/td", "-status", "-refresh", "-favorite=GB"}
+	if out.String() != "GB 27-19 CAR · Q4 2:14 · BALL\n" || len(*spawned) != 1 || !reflect.DeepEqual((*spawned)[0], want) {
+		t.Fatalf("out %q spawned %v", out.String(), *spawned)
+	}
+	runStatusOnce(dir, "GB", 0, 0, 2, time.Now(), "/bin/td", nil, &out)
+	if len(*spawned) != 1 {
+		t.Fatalf("marker must throttle the second spawn: %v", *spawned)
+	}
+}
+
+func TestRunStatusOnceNoCache(t *testing.T) {
+	for _, dir := range []string{t.TempDir(), filepath.Join(t.TempDir(), "nested")} {
+		spawned := captureSpawns(t)
+		var out strings.Builder
+		if code := runStatusOnce(dir, "GB", 0, 0, 2, time.Now(), "/bin/td", nil, &out); code != 0 || out.String() != "" {
+			t.Fatalf("code %d out %q", code, out.String())
+		}
+		if len(*spawned) != 1 {
+			t.Fatalf("expected one spawn, got %v", *spawned)
+		}
+		if _, err := os.Stat(filepath.Join(dir, "status-refresh")); err != nil {
+			t.Fatalf("marker missing: %v", err)
+		}
+	}
+}
+
+func TestRunStatusOnceCorruptCache(t *testing.T) {
+	dir := t.TempDir()
+	if err := os.WriteFile(cachePath(dir, scoreboardURL(0, 0, 2)), []byte("{not json"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	spawned := captureSpawns(t)
+	var out strings.Builder
+	if code := runStatusOnce(dir, "GB", 0, 0, 2, time.Now(), "/bin/td", nil, &out); code != 0 || out.String() != "" || len(*spawned) != 1 {
+		t.Fatalf("code %d out %q spawned %v", code, out.String(), *spawned)
+	}
+}
+
+func TestRunRefreshWritesCache(t *testing.T) {
+	api := jsonClient(t, func(*http.Request) {}, liveBoardJSON)
+	api.cacheDir = t.TempDir()
+	if code := runRefresh(api, 0, 0, 2); code != 0 {
+		t.Fatal(code)
+	}
+	board, _, ok := cachedScoreboard(api.cacheDir, 0, 0, 2)
+	if !ok || len(board.Events) != 1 {
+		t.Fatalf("cache not written: %v %+v", ok, board)
 	}
 }
