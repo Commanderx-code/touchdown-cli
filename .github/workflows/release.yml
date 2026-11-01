@@ -9,6 +9,9 @@ on:
 permissions:
   contents: write
 
+env:
+  SITE_TOKEN: ${{ secrets.SITE_TOKEN }}
+
 jobs:
   release:
     runs-on: ubuntu-latest
@@ -36,7 +39,7 @@ jobs:
             if [ "$os" = windows ]; then
               (cd "$dir" && zip -qr "../../dist/$name.zip" .)
             else
-              tar -C "$dir" -czf "dist/$name.tar.gz" .
+              tar -C "$dir" -czf "dist/$name.tar.gz" touchdown LICENSE README.md
             fi
           done
           (cd dist && sha256sum * > SHA256SUMS)
@@ -45,3 +48,10 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           TAG: ${{ github.ref_name }}
         run: gh release create "$TAG" dist/* --verify-tag --generate-notes --title "$TAG"
+      # A release made with this workflow's token does not start other
+      # workflows, so site.yml never runs. Tell the site from here instead.
+      - name: Tell the site
+        if: ${{ env.SITE_TOKEN != '' }}
+        env:
+          GH_TOKEN: ${{ env.SITE_TOKEN }}
+        run: gh api repos/Commanderx-code/helix-site/dispatches -f event_type=tool-release -f "client_payload[repo]=$GITHUB_REPOSITORY"

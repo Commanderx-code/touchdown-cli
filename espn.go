@@ -363,6 +363,9 @@ func (c *client) standings(ctx context.Context, season int) (standings, error) {
 		return out, err
 	}
 	out.CachedAt = cachedAt
+	for i := range out.Children {
+		out.Children[i].Abbreviation = plainText(out.Children[i].Abbreviation)
+	}
 	if len(out.Children) == 0 {
 		return out, fmt.Errorf("standings unavailable for %d", season)
 	}

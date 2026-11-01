@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"strings"
 	"testing"
+	"time"
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
@@ -212,10 +213,10 @@ func TestBracketTabOpensFirstDuringThePostseason(t *testing.T) {
 }
 
 func TestPlayoffsConferenceStartsOnTheFavorite(t *testing.T) {
-	m := model{api: leagueClient(t, nil), season: 2026, seasonType: 2, week: 9, favorite: "BUF", standingsConference: 1, width: 100, height: 40, showHome: true}
+	m := model{api: leagueClient(t, nil), season: 2026, seasonType: 2, week: 9, favorite: "BUF", playoffConference: 1, width: 100, height: 40, showHome: true}
 	m, _ = m.openPlayoffs()
-	if m.standingsConference != 0 {
-		t.Fatalf("conference %d", m.standingsConference)
+	if m.playoffConference != 0 {
+		t.Fatalf("conference %d", m.playoffConference)
 	}
 }
 
@@ -225,9 +226,9 @@ func TestPlayoffsKeysAndBack(t *testing.T) {
 	if !m.showPlayoffs || m.showHome {
 		t.Fatalf("P must open playoffs from home: playoffs %v home %v", m.showPlayoffs, m.showHome)
 	}
-	before := m.standingsConference
+	before := m.playoffConference
 	m = press(t, m, "right")
-	if m.standingsConference == before {
+	if m.playoffConference == before {
 		t.Fatal("right must switch conference")
 	}
 	m = press(t, m, "esc")
@@ -376,3 +377,124 @@ func TestLeagueScreensMarkStaleData(t *testing.T) {
 }
 
 var _ tea.Msg = leadersMsg{}
+
+func TestResizeClampsLeagueScrolls(t *testing.T) {
+	m := playoffsModel(t, seedsStandings(t, "KC", "BUF", "CLE", "JAX", "DEN", "PIT", "CIN", "NE", "BAL", "LV", "NYJ"))
+	m.height = 16
+	m.playoffScroll = m.maxPlayoffScroll()
+	if m.playoffScroll == 0 {
+		t.Fatal("the picture must scroll at this height")
+	}
+	next, _ := m.Update(tea.WindowSizeMsg{Width: 100, Height: 60})
+	if got := next.(model).playoffScroll; got != 0 {
+		t.Fatalf("playoff scroll %d", got)
+	}
+	l := leadersModel(t)
+	l.leaderScroll = 40
+	next, _ = l.Update(tea.WindowSizeMsg{Width: 100, Height: 200})
+	if got := next.(model).leaderScroll; got != 0 {
+		t.Fatalf("leader scroll %d", got)
+	}
+}
+
+func TestPlayoffConferenceDoesNotChangeStandings(t *testing.T) {
+	m := model{api: leagueClient(t, nil), season: 2026, week: 9, seasonType: 2, favorite: "BUF", standings: seedsStandings(t, "KC"), standingsSeason: 2026, width: 100, height: 40, showHome: true}
+	m = press(t, m, "P")
+	m = press(t, m, "right")
+	if m.playoffConference != 1 || m.standingsConference != 0 {
+		t.Fatalf("playoffs %d standings %d", m.playoffConference, m.standingsConference)
+	}
+	if view := stripANSI(m.View()); !strings.Contains(view, "NFC") {
+		t.Fatalf("view:\n%s", view)
+	}
+}
+
+func TestBracketTickKeepsTheOtherRefreshesRunning(t *testing.T) {
+	var seen []string
+	m := playoffsModel(t, standings{})
+	m.api = leagueClient(t, &seen)
+	m.seasonType = 3
+	m = press(t, m, "2")
+	seen = nil
+	next, cmd := m.Update(tickMsg(time.Now()))
+	m = next.(model)
+	if !m.teamLoading {
+		t.Fatal("the favorite's schedule refresh must still run while the bracket is open")
+	}
+	runCmdsNoTick(cmd)
+	rounds := 0
+	for _, u := range seen {
+		if strings.Contains(u, "seasontype=3") && !strings.Contains(u, "week=9") {
+			rounds++
+		}
+	}
+	if rounds != len(playoffRounds) {
+		t.Fatalf("rounds refetched %d: %v", rounds, seen)
+	}
+}
+
+func TestBracketTickSkipsRoundsOutsideThePostseason(t *testing.T) {
+	var seen []string
+	m := playoffsModel(t, standings{})
+	m.api = leagueClient(t, &seen)
+	m = press(t, m, "2")
+	m.teamUpdated = time.Now()
+	seen = nil
+	next, cmd := m.Update(tickMsg(time.Now()))
+	_ = next
+	runCmdsNoTick(cmd)
+	for _, u := range seen {
+		if strings.Contains(u, "seasontype=3") {
+			t.Fatalf("no game can change in a bracket of TBD teams: %v", seen)
+		}
+	}
+}
+
+func TestBracketWaitsForTheSeason(t *testing.T) {
+	m := model{api: leagueClient(t, nil), favorite: "GB", width: 100, height: 40, showPlayoffs: true, playoffTab: playoffBracket}
+	if _, cmd := m.requestPlayoffRounds(true); cmd != nil {
+		t.Fatal("rounds must not load before the season is known")
+	}
+}
+
+func TestStandingsSanitizeConferenceNames(t *testing.T) {
+	api := jsonClient(t, func(*http.Request) {}, `{"children":[{"abbreviation":"AFC\u0007"}]}`)
+	data, err := api.standings(context.Background(), 2026)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if data.Children[0].Abbreviation != "AFC" {
+		t.Fatalf("abbreviation %q", data.Children[0].Abbreviation)
+	}
+}
+
+func TestRosterOnlyStatusesGetReadableLabels(t *testing.T) {
+	for status, want := range map[string]string{"Day-To-Day": "DTD", "Physically Unable to Perform": "PUP", "Non-Football Injury": "NFI", "Suspension": "SUSP", "Reserve/Left Squad": "RESE"} {
+		report := injuryReport{}.withRoster(roster{Groups: []rosterGroup{{Players: []rosterPlayer{{ID: "1", Name: "A", Injury: status}}}}})
+		if got := statusLabel(report.Entries[0]); got != want {
+			t.Fatalf("%s: label %q", status, got)
+		}
+	}
+}
+
+// runCmdsNoTick runs a command tree without waiting on the 30-second tick.
+func runCmdsNoTick(cmd tea.Cmd) []tea.Msg {
+	if cmd == nil {
+		return nil
+	}
+	done := make(chan tea.Msg, 1)
+	go func() { done <- cmd() }()
+	select {
+	case msg := <-done:
+		if batch, ok := msg.(tea.BatchMsg); ok {
+			var out []tea.Msg
+			for _, c := range batch {
+				out = append(out, runCmdsNoTick(c)...)
+			}
+			return out
+		}
+		return []tea.Msg{msg}
+	case <-time.After(200 * time.Millisecond):
+		return nil
+	}
+}

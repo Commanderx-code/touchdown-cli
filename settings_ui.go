@@ -174,6 +174,6 @@ func (m model) renderSettings(width int) string {
 	if m.settingsError != "" {
 		lines = append(lines, liveStyle.Render(clipText(m.settingsError, inner)))
 	}
-	lines = append(lines, dimStyle.Render("↑/↓ team · ←/→ theme · Space follow · Enter save · Esc cancel"))
+	lines = append(lines, dimStyle.Render("↑/↓ team · ←/→ theme · Space follow now · Enter save · Esc cancel"))
 	return centerBlock(framedLines(lines, inner), width)
 }

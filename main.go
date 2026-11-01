@@ -115,6 +115,7 @@ type model struct {
 	showOverview             bool
 	showPlayoffs             bool
 	playoffTab               int
+	playoffConference        int
 	playoffScroll            int
 	playoffSeason            int
 	playoffRoundData         map[int]playoffRound
@@ -191,6 +192,27 @@ func (m model) watching(g game) bool {
 		}
 	}
 	return false
+}
+
+// tickLoads is the refresh each tick starts, chosen by the screen on show.
+func (m model) tickLoads() (model, tea.Cmd) {
+	if (m.showHome || m.showTeam || !m.showDetail && !m.showStandings) && m.teamScheduleDue() {
+		m.teamLoading = true
+		next, injuries := m.requestInjuries(m.favorite, true)
+		return next, tea.Batch(next.loadBoard(), next.loadTeam(), tick(), injuries)
+	}
+	if m.showStandings {
+		if !m.standingsLoading {
+			m.standingsLoading = true
+			return m, tea.Batch(m.loadStandings(), tick())
+		}
+		return m, tick()
+	}
+	if m.season > 0 && !m.standingsLoading && (m.standingsSeason != m.season || time.Since(m.standingsUpdated) > 5*time.Minute) {
+		m.standingsLoading = true
+		return m, tea.Batch(m.loadBoard(), m.loadStandings(), tick())
+	}
+	return m, tea.Batch(m.loadBoard(), tick())
 }
 
 func (m model) visibleGames() []game {
@@ -357,6 +379,8 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.injuryScroll = min(m.injuryScroll, m.maxScrollForTab(tabInjuries))
 		m.playerScroll = min(m.playerScroll, m.maxPlayerScroll())
 		m.detailScroll = min(m.detailScroll, m.maxDetailScroll())
+		m.playoffScroll = min(m.playoffScroll, m.maxPlayoffScroll())
+		m.leaderScroll = min(m.leaderScroll, m.maxLeaderScroll())
 	case playoffRoundMsg:
 		return m.applyPlayoffRound(msg), nil
 	case leadersMsg:
@@ -604,27 +628,12 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m = m.scrollBy(3)
 		}
 	case tickMsg:
-		if m.showPlayoffs && m.playoffTab == playoffBracket {
-			next, rounds := m.requestPlayoffRounds(true)
-			return next, tea.Batch(next.loadBoard(), rounds, tick())
+		var rounds tea.Cmd
+		if m.showPlayoffs && m.playoffTab == playoffBracket && m.seasonType == 3 {
+			m, rounds = m.requestPlayoffRounds(true)
 		}
-		if (m.showHome || m.showTeam || !m.showDetail && !m.showStandings) && m.teamScheduleDue() {
-			m.teamLoading = true
-			next, injuries := m.requestInjuries(m.favorite, true)
-			return next, tea.Batch(next.loadBoard(), next.loadTeam(), tick(), injuries)
-		}
-		if m.showStandings {
-			if !m.standingsLoading {
-				m.standingsLoading = true
-				return m, tea.Batch(m.loadStandings(), tick())
-			}
-			return m, tick()
-		}
-		if m.season > 0 && !m.standingsLoading && (m.standingsSeason != m.season || time.Since(m.standingsUpdated) > 5*time.Minute) {
-			m.standingsLoading = true
-			return m, tea.Batch(m.loadBoard(), m.loadStandings(), tick())
-		}
-		return m, tea.Batch(m.loadBoard(), tick())
+		next, cmd := m.tickLoads()
+		return next, tea.Batch(cmd, rounds)
 	case tea.KeyMsg:
 		key := msg.String()
 		if m.showHelp {

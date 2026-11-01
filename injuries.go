@@ -219,12 +219,25 @@ func (r injuryReport) withRoster(data roster) injuryReport {
 			if p.Injury == "" || p.Injury == "Active" || r.listed[p.ID] || r.listed[p.Name] {
 				continue
 			}
-			code := []rune(strings.ToUpper(p.Injury))
-			r.Entries = append(r.Entries, injury{AthleteID: p.ID, Name: p.Name, Position: p.Position, Status: p.Injury, Code: string(code[:min(4, len(code))])})
+			r.Entries = append(r.Entries, injury{AthleteID: p.ID, Name: p.Name, Position: p.Position, Status: p.Injury, Code: rosterStatusCode(p.Injury)})
 		}
 	}
 	sortInjuries(r.Entries)
 	return r
+}
+
+// rosterStatusCode shortens a status the feed never gave a code for.
+func rosterStatusCode(status string) string {
+	switch status {
+	case "Day-To-Day":
+		return "DTD"
+	case "Physically Unable to Perform":
+		return "PUP"
+	case "Non-Football Injury":
+		return "NFI"
+	}
+	code := []rune(strings.ToUpper(status))
+	return string(code[:min(4, len(code))])
 }
 
 func sortInjuries(rows []injury) {

@@ -491,11 +491,14 @@ func wrapWords(s string, width int) []string {
 	return lines
 }
 
-func (m model) conferenceName() string {
-	if m.standingsConference < len(m.standings.Children) {
-		return m.standings.Children[m.standingsConference].Abbreviation
+func (m model) conferenceName() string { return m.conferenceLabel(m.standingsConference) }
+
+// conferenceLabel names a conference by its place in the standings.
+func (m model) conferenceLabel(index int) string {
+	if index < len(m.standings.Children) {
+		return m.standings.Children[index].Abbreviation
 	}
-	if m.standingsConference == 1 {
+	if index == 1 {
 		return "NFC"
 	}
 	return "AFC"

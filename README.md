@@ -139,7 +139,7 @@ The score always reads favorite first. `BALL` means your team has possession and
 
 `td -status -live` prints the line only while a game is in progress, so a prompt segment appears during games and disappears otherwise.
 
-Followed teams join the line after your favorite, separated by ` | `. They are also pinned to the top of the ticker, included in score alerts, and shown by the favorite filter. Press Space in settings to follow or unfollow the highlighted team.
+Followed teams join the line after your favorite, separated by ` | `. They are also pinned to the top of the ticker, included in score alerts, and shown by the favorite filter. Press Space in settings to follow or unfollow the highlighted team. That saves at once, so Esc does not undo it.
 
 `-notify` and `-notify-all` work with `-status -watch` and `-status -split`, so a ticker pane can send alerts without the full app open. Alerts use `notify-send`, which means Linux only.
 
@@ -189,7 +189,7 @@ Scores refresh every 30 seconds while Touchdown is open. Each new score triggers
 
 Rosters, injury reports, and player stats load the first time their tab or card opens and stay for the session; `r` refetches them. The favorite's injury report also loads at startup and refreshes every five minutes. ESPN's injury feed holds only each team's 25 newest updates, so every report also reads the team's roster, which lists every status. Injury reports describe today, so the game center shows one only for games within two weeks of now.
 
-Touchdown uses ESPN's publicly accessible, undocumented NFL scoreboard, summary, schedule, standings, injuries, roster, and athlete overview endpoints. Those endpoints can change or become unavailable. Data can lag live action, and stats or play-by-play may be absent before kickoff or while a game is being updated. Kickoff times use your terminal's local timezone.
+Touchdown uses ESPN's publicly accessible, undocumented NFL scoreboard, summary, schedule, standings, leaders, injuries, roster, and athlete overview endpoints. Those endpoints can change or become unavailable. Data can lag live action, and stats or play-by-play may be absent before kickoff or while a game is being updated. Kickoff times use your terminal's local timezone.
 
 Successful responses are saved in your user cache directory, usually `~/.cache/touchdown`. If a request fails, Touchdown can display the last saved response and mark cached scores as `CACHED`. Cached data may be old; use `r` to retry when you are back online.
 

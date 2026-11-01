@@ -72,7 +72,6 @@ func (s seededTeam) row(width int) string {
 // playoffLines is the picture tab: the seven who are in, the next four, and
 // the first-round games if the season ended today.
 func (m model) playoffLines(width int) []string {
-	entries := m.standingEntries()
 	if m.standingsSeason != m.season {
 		if m.standingsError != "" {
 			return []string{liveStyle.Render(clipText("Standings: "+plainText(m.standingsError), width))}
@@ -84,10 +83,10 @@ func (m model) playoffLines(width int) []string {
 		lines = append(lines, liveStyle.Render(clipText(notice, width)))
 	}
 	var seeds []seededTeam
-	if m.standingsConference < len(m.standings.Children) {
-		seeds = conferenceSeeds(m.standings.Children[m.standingsConference])
+	if m.playoffConference < len(m.standings.Children) {
+		seeds = conferenceSeeds(m.standings.Children[m.playoffConference])
 	}
-	if len(entries) == 0 || len(seeds) == 0 {
+	if len(seeds) == 0 {
 		return append(lines, dimStyle.Render("No playoff seeds yet."))
 	}
 	section := func(title string, teams []seededTeam) {
@@ -246,9 +245,9 @@ func (m model) openPlayoffs() (model, tea.Cmd) {
 		m.playoffTab = playoffBracket
 	}
 	if team, ok := findTeam(m.favorite); ok {
-		m.standingsConference = 0
+		m.playoffConference = 0
 		if team.conference == "NFC" {
-			m.standingsConference = 1
+			m.playoffConference = 1
 		}
 	}
 	return m.playoffLoads(false)
@@ -273,6 +272,9 @@ func (m model) playoffLoads(force bool) (model, tea.Cmd) {
 }
 
 func (m model) requestPlayoffRounds(force bool) (model, tea.Cmd) {
+	if m.season == 0 {
+		return m, nil
+	}
 	if m.playoffSeason != m.season || m.playoffRoundData == nil {
 		m.playoffSeason = m.season
 		m.playoffRoundData = map[int]playoffRound{}
@@ -350,7 +352,7 @@ func (m model) updatePlayoffsKey(key string) (model, tea.Cmd) {
 		m.playoffScroll = min(m.maxPlayoffScroll(), m.playoffScroll+page)
 	case "left", "right", "h", "l":
 		if m.playoffTab == playoffPicture {
-			m.standingsConference = 1 - m.standingsConference
+			m.playoffConference = 1 - m.playoffConference
 			m.playoffScroll = 0
 		}
 	case "1":
@@ -376,7 +378,7 @@ func (m model) renderPlayoffs(width int) string {
 	footer := "1/2 tabs  ·  ↑/↓ scroll  ·  r refresh  ·  Esc back  ·  q quit"
 	short := "1/2 · ↑/↓ · Esc · q"
 	if m.playoffTab == playoffPicture {
-		title += "  ·  " + m.conferenceName()
+		title += "  ·  " + m.conferenceLabel(m.playoffConference)
 		footer = "←/→ conference · 1/2 tabs · ↑/↓ · r refresh · Esc back · q quit"
 		short = "←/→ · " + short
 	}
