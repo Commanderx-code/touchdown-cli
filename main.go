@@ -1062,6 +1062,9 @@ func main() {
 			os.Exit(2)
 		}
 		fmt.Printf("Followed teams: %s\nConfig: %s\n", followedLabel(teams), *configPath)
+		if note := followNote(*follow, config.FavoriteTeam); note != "" {
+			fmt.Println(note)
+		}
 		return
 	}
 	if *showConfig {

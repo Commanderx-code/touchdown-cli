@@ -498,3 +498,29 @@ func runCmdsNoTick(cmd tea.Cmd) []tea.Msg {
 		return nil
 	}
 }
+
+func TestHelpSaysWhereTheQuickKeysWork(t *testing.T) {
+	for _, height := range []int{12, 24, 40} {
+		m := model{favorite: "GB", width: 100, height: height, showHelp: true}
+		view := stripANSI(m.View())
+		if !strings.Contains(strings.ToLower(view), "dashboard") {
+			t.Fatalf("height %d:\n%s", height, view)
+		}
+		if lines := strings.Count(view, "\n") + 1; lines > height {
+			t.Fatalf("height %d: %d lines:\n%s", height, lines, view)
+		}
+	}
+	full := stripANSI(model{favorite: "GB", width: 100, height: 40, showHelp: true}.View())
+	for _, want := range []string{"ON THE DASHBOARD", "ON ANY SCREEN", "L  league leaders"} {
+		if !strings.Contains(full, want) {
+			t.Fatalf("missing %q:\n%s", want, full)
+		}
+	}
+}
+
+func TestFullHelpFitsItsSmallestTerminal(t *testing.T) {
+	m := model{favorite: "GB", width: 100, height: 20, showHelp: true}
+	if lines := strings.Count(m.View(), "\n") + 1; lines > 20 {
+		t.Fatalf("%d lines:\n%s", lines, m.View())
+	}
+}

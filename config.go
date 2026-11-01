@@ -145,6 +145,16 @@ func flagWasSet(fs *flag.FlagSet, name string) bool {
 	return found
 }
 
+// followNote explains why a favorite named in -follow is not in the saved list.
+func followNote(value, favorite string) string {
+	for _, part := range strings.Split(value, ",") {
+		if team, err := resolveTeam(strings.TrimSpace(part)); err == nil && team.abbreviation == favorite {
+			return favorite + " is your favorite, so it is always shown."
+		}
+	}
+	return ""
+}
+
 func saveFollowed(path string, teams []string) error {
 	if teams == nil {
 		teams = []string{}
