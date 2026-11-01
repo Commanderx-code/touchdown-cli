@@ -176,6 +176,16 @@ func (m model) spotlightPanel(inner, maxLines int) string {
 	if lastLine != "" {
 		reserved++
 	}
+	// On a short panel the last result yields, then the injury count.
+	if maxLines > 0 && reserved > maxLines && lastLine != "" {
+		lastLine = ""
+		reserved--
+	}
+	// The injury count yields first when the panel is short.
+	if injuries := m.spotlightInjuryLine(); injuries != "" && (maxLines <= 0 || reserved+1 <= maxLines) {
+		lines = append(lines, dimStyle.Render(clipText(injuries, inner)))
+		reserved++
+	}
 	if maxLines > 0 {
 		live = live[:max(0, min(len(live), maxLines-reserved))]
 	}
@@ -184,6 +194,19 @@ func (m model) spotlightPanel(inner, maxLines int) string {
 		lines = append(lines, sectionStyle.Render(clipText(lastLine, inner)))
 	}
 	return framedLines(lines, inner)
+}
+
+// spotlightInjuryLine is "INJURIES  2 OUT · 1 Q" for the favorite, or ""
+// while loading or when nobody is Out, Doubtful or Questionable.
+func (m model) spotlightInjuryLine() string {
+	entry, ok := m.injuriesFor(m.favorite)
+	if !ok || entry.Report.Team == "" {
+		return ""
+	}
+	if summary := entry.Report.gameDaySummary(); summary != "" {
+		return "INJURIES  " + summary
+	}
+	return ""
 }
 
 // lineCount is the number of terminal lines a rendered block occupies.

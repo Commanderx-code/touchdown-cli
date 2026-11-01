@@ -11,6 +11,8 @@ Follow every game, keep your favorite team in focus, and open a game for box sco
 - **Scores dashboard:** Live, final, and upcoming games grouped under kickoff-slot headers, with a favorite-team card and a conference standings snapshot on wide terminals. Live rows show possession, down and distance, and red zone.
 - **Scoring feed:** Every score across live games appears on the dashboard with the play that produced it.
 - **Team season pages:** Any team's season schedule, record, and passing, rushing, and receiving leaders. Your favorite's page adds the next matchup and kickoff, latest result, and bye week. Press `t` on any matchup to jump to the opponent's page and Esc to walk back.
+- **Rosters and injury reports:** Every season page has roster and injury tabs. The injury report shows status, body part, expected return, and the latest note; the game center lists both teams' Out, Doubtful, and Questionable players, and the favorite's card counts them.
+- **Player cards:** Enter on any roster or injury row opens the player's bio, injury status, and this season's stat lines.
 - **Season overview:** Weeks 1 to 18 at a glance with the game count, your favorite's matchup or result, and the teams on bye. Enter opens that week on the dashboard.
 - **Game center:** Team and player stats, play-by-play, quarter scores, scoring plays, and a drive timeline. Live games show possession, down and distance, timeouts remaining, and the latest play when available.
 - **Personalization:** Choose any NFL team and one of three themes (`mint`, `amber`, or `mono`). The favorite team also controls game filtering, standings focus, and optional score alerts.
@@ -64,7 +66,7 @@ Captured from Touchdown with Week 7 of the 2026 season selected. Scores shown he
 | `g` | Open your favorite team's game for the displayed week; show its season page during a bye |
 | `p` | Open your favorite team's season page |
 | `←` / `→` or `h` / `l` | Change weeks on the dashboard, conferences in standings, or themes in settings |
-| `1`–`4` or `Tab` | Switch game-detail tabs |
+| `1`–`4` or `Tab` | Switch game-detail tabs; `1`–`3` switch season page tabs (schedule, roster, injuries) |
 | `Page Up` / `Page Down` or mouse wheel | Scroll long lists |
 | `s` | Open standings from the home menu or dashboard |
 | `t` | Open the team picker on the dashboard; open the selected opponent's season on a season page |
@@ -176,7 +178,9 @@ description = "NFL ticker"
 
 Scores refresh every 30 seconds while Touchdown is open. Each new score triggers one request for that game's summary to fetch the scoring play for the feed. The favorite-team schedule loads in the background and refreshes every five minutes. Season leader totals are calculated from completed game box scores when you open the season page; they may be partial if a game summary is unavailable.
 
-Touchdown uses ESPN's publicly accessible, undocumented NFL scoreboard, summary, schedule, and standings endpoints. Those endpoints can change or become unavailable. Data can lag live action, and stats or play-by-play may be absent before kickoff or while a game is being updated. Kickoff times use your terminal's local timezone.
+Rosters, injury reports, and player stats load the first time their tab or card opens and stay for the session; `r` refetches them. Injury reports describe today, so the game center shows one only for games within two weeks of now.
+
+Touchdown uses ESPN's publicly accessible, undocumented NFL scoreboard, summary, schedule, standings, injuries, roster, and athlete overview endpoints. Those endpoints can change or become unavailable. Data can lag live action, and stats or play-by-play may be absent before kickoff or while a game is being updated. Kickoff times use your terminal's local timezone.
 
 Successful responses are saved in your user cache directory, usually `~/.cache/touchdown`. If a request fails, Touchdown can display the last saved response and mark cached scores as `CACHED`. Cached data may be old; use `r` to retry when you are back online.
 

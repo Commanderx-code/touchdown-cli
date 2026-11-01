@@ -42,16 +42,16 @@ func (m model) View() string {
 	if m.showOverview {
 		return m.renderOverview(width)
 	}
+	if m.showPlayer {
+		return m.renderPlayer(width)
+	}
 	if m.showHome {
 		return m.renderHome(width)
 	}
 	if m.compact || m.height > 0 && m.height < 16 {
 		return m.compactView(width)
 	}
-	inner := max(28, min(74, width-6))
-	if inner+4 > width {
-		inner = max(12, width-4)
-	}
+	inner := panelInner(width)
 
 	header := centerLine(accentStyle.Render("◆  TOUCHDOWN"), width)
 	season := "NFL COMMAND CENTER  ·  LIVE SCORES AND STATS"
@@ -74,7 +74,7 @@ func (m model) View() string {
 	if m.showStandings {
 		footer = "←/→ conference  ·  ↑/↓, PgUp/PgDn, wheel scroll  ·  Esc back  ·  q quit"
 	} else if m.showTeam {
-		footer = "↑/↓ select game  ·  Enter open  ·  t opponent  ·  Esc back  ·  r refresh  ·  q quit"
+		footer = "1/2/3 tabs  ·  ↑/↓ select  ·  Enter open  ·  t opponent  ·  Esc back  ·  r refresh  ·  q quit"
 	} else if m.showDetail {
 		footer = "1/2/3/4 tabs  ·  ↑/↓ scroll  ·  Esc back  ·  r refresh  ·  q quit"
 	}
@@ -85,7 +85,7 @@ func (m model) View() string {
 		if m.showStandings {
 			footer = "←/→ AFC/NFC · ↑/↓/wheel · Esc · q"
 		} else if m.showTeam {
-			footer = "↑/↓ game · Enter · t opponent · Esc · q"
+			footer = "1/2/3 · ↑/↓ · Enter · t · Esc · q"
 		} else if m.showDetail {
 			footer = "1/2/3/4 tabs · ↑/↓ scroll · Esc back · q"
 		} else {
@@ -102,6 +102,15 @@ func (m model) View() string {
 	return screen
 }
 
+// panelInner is the width inside the main panel frame at a terminal width.
+func panelInner(width int) int {
+	inner := max(28, min(74, width-6))
+	if inner+4 > width {
+		inner = max(12, width-4)
+	}
+	return inner
+}
+
 func (m model) compactView(width int) string {
 	lines := []string{accentStyle.Render("◆ TOUCHDOWN")}
 	if m.showStandings {
@@ -111,9 +120,9 @@ func (m model) compactView(width int) string {
 		lines = append(lines, rows[start:min(len(rows), start+max(1, m.height-4))]...)
 		lines = append(lines, dimStyle.Render("←/→ conference · Esc · q"))
 	} else if m.showTeam {
-		lines = append(lines, sectionStyle.Render(favoriteLabel(m.favorite)+" SEASON"))
+		lines = append(lines, sectionStyle.Render(favoriteLabel(m.favorite)+" SEASON · "+strings.TrimLeft(teamTabNames[m.teamTab], "123 ")))
 		rows := m.teamLines()
-		start := min(m.teamScroll, m.maxTeamScroll())
+		start := min(m.teamTabScroll(), m.maxTeamScroll())
 		lines = append(lines, rows[start:min(len(rows), start+max(1, m.height-4))]...)
 		lines = append(lines, dimStyle.Render("↑/↓ game · Enter open · Esc · q"))
 	} else if m.showDetail {

@@ -65,6 +65,7 @@ func (m model) openTeamSeason(team string) (model, tea.Cmd) {
 	m.showDetail = false
 	m.showStandings = false
 	m.showTeam = true
+	m = m.resetTeamTabs()
 	m.teamScroll = 0
 	m.teamSelected = 0
 	m.teamNotice = ""
