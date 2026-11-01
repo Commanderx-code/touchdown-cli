@@ -1025,7 +1025,7 @@ func main() {
 		}
 		return
 	}
-	m := model{api: api, season: *season, week: *week, seasonType: *seasonType, loading: true, favorite: team.abbreviation, showHome: true, compact: *compact, notify: *notify || *notifyAll, notifyAll: *notifyAll, theme: chosenTheme, configPath: *configPath}
+	m := model{api: api, season: *season, week: *week, seasonType: *seasonType, loading: true, favorite: team.abbreviation, showHome: true, compact: *compact, notify: *notify || *notifyAll, notifyAll: *notifyAll, theme: chosenTheme, configPath: *configPath}.markStartupLoads()
 	if _, err := tea.NewProgram(m, tea.WithAltScreen(), tea.WithMouseCellMotion()).Run(); err != nil {
 		fmt.Fprintln(os.Stderr, err)
 		os.Exit(1)
