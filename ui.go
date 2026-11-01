@@ -39,6 +39,9 @@ func (m model) View() string {
 	if m.showPicker {
 		return m.renderPicker(width)
 	}
+	if m.showOverview {
+		return m.renderOverview(width)
+	}
 	if m.showHome {
 		return m.renderHome(width)
 	}

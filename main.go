@@ -111,6 +111,10 @@ type model struct {
 	view                     teamPage
 	showPicker               bool
 	showOverview             bool
+	overview                 map[int]overviewWeek
+	overviewCursor           int
+	overviewScroll           int
+	overviewSeason           int
 	history                  []backTarget
 	pickerIndex              int
 	pickerScroll             int
@@ -302,6 +306,8 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.standingsScroll = min(m.standingsScroll, m.maxStandingsScroll())
 		m.teamScroll = min(m.teamScroll, m.maxTeamScroll())
 		m.detailScroll = min(m.detailScroll, m.maxDetailScroll())
+	case overviewMsg:
+		return m.applyOverview(msg), nil
 	case boardMsg:
 		if m.season != msg.season || m.week != msg.week || m.seasonType != msg.seasonType {
 			break
@@ -485,6 +491,15 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if m.showHelp {
 			break
 		}
+		if m.showOverview {
+			switch msg.Button {
+			case tea.MouseButtonWheelUp:
+				return m.moveOverviewCursor(-3)
+			case tea.MouseButtonWheelDown:
+				return m.moveOverviewCursor(3)
+			}
+			break
+		}
 		switch msg.Button {
 		case tea.MouseButtonWheelUp:
 			m = m.scrollBy(-3)
@@ -531,6 +546,12 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				return m, tea.Quit
 			}
 			return m.updatePickerKey(key, time.Now())
+		}
+		if m.showOverview {
+			if key == "q" || key == "ctrl+c" {
+				return m, tea.Quit
+			}
+			return m.updateOverviewKey(key)
 		}
 		if key == "t" && m.showTeam && !m.showDetail {
 			return m.jumpToOpponent()
@@ -787,6 +808,9 @@ func (m model) openHomeSelection() (model, tea.Cmd) {
 	case 6:
 		m.showHome = true
 		return m.openPicker(), nil
+	case 7:
+		m.showHome = true
+		return m.openOverview()
 	case 4, 5:
 		m.standingsFromHome = true
 		m.showStandings = true
