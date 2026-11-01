@@ -118,6 +118,9 @@ type model struct {
 	overviewFavorite         string
 	injuryReports            map[string]injuryEntry
 	teamTab                  int
+	showPlayer               bool
+	player                   playerRef
+	playerScroll             int
 	rosterSelected           int
 	rosterScroll             int
 	injurySelected           int
@@ -521,6 +524,15 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 			break
 		}
+		if m.showPlayer {
+			switch msg.Button {
+			case tea.MouseButtonWheelUp:
+				m.playerScroll = max(0, m.playerScroll-3)
+			case tea.MouseButtonWheelDown:
+				m.playerScroll = min(m.maxPlayerScroll(), m.playerScroll+3)
+			}
+			break
+		}
 		switch msg.Button {
 		case tea.MouseButtonWheelUp:
 			m = m.scrollBy(-3)
@@ -573,6 +585,12 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				return m, tea.Quit
 			}
 			return m.updateOverviewKey(key)
+		}
+		if m.showPlayer {
+			if key == "q" || key == "ctrl+c" {
+				return m, tea.Quit
+			}
+			return m.updatePlayerKey(key)
 		}
 		if key == "t" && m.showTeam && !m.showDetail {
 			return m.jumpToOpponent()
@@ -658,6 +676,9 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			if m.showHome {
 				next, cmd := m.openHomeSelection()
 				return next, cmd
+			}
+			if m.showTeam && m.teamTab != tabSchedule {
+				return m.openSelectedPlayer()
 			}
 			if page := m.activeTeamPage(); m.showTeam && m.teamTab == tabSchedule && page.Season == m.season && len(page.Data.Events) > 0 {
 				event := page.Data.Events[min(m.teamSelected, len(page.Data.Events)-1)]

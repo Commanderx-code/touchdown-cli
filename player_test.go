@@ -322,3 +322,77 @@ func TestInFlightReplyForAnotherTeamIsStoredNotShown(t *testing.T) {
 		t.Fatalf("DET page must still be loading:\n%s", view)
 	}
 }
+
+func TestEnterOnRosterOpensPlayerCardWithStats(t *testing.T) {
+	var seen []string
+	m := seasonTabsModel(t, &seen)
+	m = press(t, m, "2")
+	seen = nil
+	m = press(t, m, "enter")
+	if !m.showPlayer || m.player.ID != "4036378" {
+		t.Fatalf("enter on Love: showPlayer %v player %+v", m.showPlayer, m.player)
+	}
+	if len(seen) != 1 || !strings.Contains(seen[0], "/athletes/4036378/overview") {
+		t.Fatalf("card must fetch the overview once: %v", seen)
+	}
+	view := m.View()
+	for _, want := range []string{"◆  PLAYER", "Jordan Love", "#10  QB  ·  Green Bay Packers", `27 yrs  ·  6' 4"  ·  219 lbs  ·  6th season  ·  Utah State`, "SEASON STATS", "PASSING", "CMP", "1,504", "RUSHING"} {
+		if !strings.Contains(view, want) {
+			t.Fatalf("card missing %q:\n%s", want, view)
+		}
+	}
+	for _, size := range [][2]int{{80, 24}, {100, 30}} {
+		m.width, m.height = size[0], size[1]
+		if lines := strings.Count(m.View(), "\n") + 1; lines > size[1] {
+			t.Errorf("card at %dx%d has %d lines", size[0], size[1], lines)
+		}
+	}
+	m = press(t, m, "esc")
+	if m.showPlayer || !m.showTeam || m.teamTab != tabRoster {
+		t.Fatalf("esc must return to the roster tab: player %v team %v tab %d", m.showPlayer, m.showTeam, m.teamTab)
+	}
+}
+
+func TestEnterOnInjuryRowShowsInjuryLine(t *testing.T) {
+	m := seasonTabsModel(t, nil)
+	m = press(t, press(t, m, "3"), "enter")
+	if !m.showPlayer || m.player.Name != "Micah Parsons" {
+		t.Fatalf("enter on Parsons: %+v", m.player)
+	}
+	view := m.View()
+	for _, want := range []string{"OUT  ·  Knee - ACL  ·  back Nov 25", "Targeting Week 12.", "#--  DE  ·  Green Bay Packers"} {
+		if !strings.Contains(view, want) {
+			t.Fatalf("injury card missing %q:\n%s", want, view)
+		}
+	}
+	m = press(t, m, "esc")
+	m.injurySelected = 2 // No Link, no athlete ID
+	m = press(t, m, "enter")
+	if m.showPlayer {
+		t.Fatal("a row without an athlete ID must not open a card")
+	}
+}
+
+func TestPlayerCardNoStatsAndError(t *testing.T) {
+	m := seasonTabsModel(t, nil)
+	m = press(t, press(t, m, "2"), "enter")
+	next, _ := m.Update(playerMsg{id: "4036378", stats: playerStats{ID: "4036378"}})
+	m = next.(model)
+	if !strings.Contains(m.View(), "No season stats yet.") {
+		t.Fatalf("empty stats:\n%s", m.View())
+	}
+	next, _ = m.Update(playerMsg{id: "4036378", err: errors.New("boom")})
+	m = next.(model)
+	if !strings.Contains(m.View(), "Stats: boom") {
+		t.Fatalf("error:\n%s", m.View())
+	}
+	var seen []string
+	m.api = teamDataClient(t, &seen)
+	m = press(t, m, "r")
+	if len(seen) != 1 || !strings.Contains(seen[0], "/overview") {
+		t.Fatalf("r must refetch the overview: %v", seen)
+	}
+	if !strings.Contains(m.View(), "PASSING") {
+		t.Fatal("refetched stats must render")
+	}
+}
