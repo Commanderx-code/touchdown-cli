@@ -497,13 +497,31 @@ func TestSpotlightShowsInjuryCount(t *testing.T) {
 	}
 	m.api = injuriesByTeamClient(t, nil)
 	found := false
-	for _, msg := range runCmds(m.Init()) {
+	for _, msg := range runCmds(tea.Batch(m.initialLoads()...)) {
 		if reply, ok := msg.(injuriesMsg); ok && reply.team == "GB" {
 			found = true
 		}
 	}
 	if !found {
-		t.Fatal("Init must request the favorite's injury report")
+		t.Fatal("startup must request the favorite's injury report")
+	}
+}
+
+func TestStoreErrorsAndTeamNamesAreSanitized(t *testing.T) {
+	m := model{}
+	m = m.applyPlayer(playerMsg{id: "1", err: errors.New("bad\x1b[31m\x07")})
+	m = m.applyInjuries(injuriesMsg{team: "GB", err: errors.New("x\x1b[0m")})
+	m = m.applyRoster(rosterMsg{team: "GB", err: errors.New("y\r\n")})
+	p, _ := m.playerFor("1")
+	i, _ := m.injuriesFor("GB")
+	r, _ := m.rosterFor("GB")
+	if p.Error != "bad[31m" || i.Error != "x[0m" || r.Error != "y" {
+		t.Fatalf("errors must be sanitized: %q %q %q", p.Error, i.Error, r.Error)
+	}
+	body := strings.Replace(scheduleJSON("GB"), "Green Bay Packers", "Green\\u001b[31m Bay", 1)
+	s, err := jsonClient(t, func(*http.Request) {}, body).teamSchedule(context.Background(), "GB", 2026)
+	if err != nil || s.Team.DisplayName != "Green[31m Bay" {
+		t.Fatalf("team name must be sanitized: %q err %v", s.Team.DisplayName, err)
 	}
 }
 
