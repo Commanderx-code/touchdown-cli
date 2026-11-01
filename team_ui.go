@@ -5,7 +5,8 @@ import (
 	"strings"
 )
 
-func (m model) teamLines() []string {
+// scheduleLines is the schedule tab: record, next game, leaders, every matchup.
+func (m model) scheduleLines() []string {
 	page := m.activeTeamPage()
 	lines := []string{}
 	if m.teamNotice != "" {
@@ -104,7 +105,7 @@ func (m model) teamPageSize() int {
 		return max(1, m.height-4)
 	}
 	if m.height > 0 {
-		return max(1, m.height-8)
+		return max(1, m.height-9)
 	}
 	return len(m.teamLines())
 }
@@ -112,7 +113,7 @@ func (m model) teamPageSize() int {
 func (m model) maxTeamScroll() int { return max(0, len(m.teamLines())-m.teamPageSize()) }
 
 func (m model) teamSelectedLine() int {
-	for i, line := range m.teamLines() {
+	for i, line := range m.scheduleLines() {
 		if strings.Contains(line, "FULL SCHEDULE") {
 			return i + 1 + m.teamSelected
 		}
@@ -126,9 +127,9 @@ func (m model) renderTeam(inner int) string {
 	if name == "" {
 		name = page.Team + " SEASON"
 	}
-	lines := []string{accentStyle.Render(fmt.Sprintf("%s  ·  %d", strings.ToUpper(name), m.season)), borderStyle.Render(strings.Repeat("─", inner))}
+	lines := []string{accentStyle.Render(fmt.Sprintf("%s  ·  %d", strings.ToUpper(name), m.season)), m.tabLine(), borderStyle.Render(strings.Repeat("─", inner))}
 	rows := m.teamLines()
-	start := min(m.teamScroll, m.maxTeamScroll())
+	start := min(m.teamTabScroll(), m.maxTeamScroll())
 	for _, row := range rows[start:min(len(rows), start+m.teamPageSize())] {
 		lines = append(lines, clipStyled(row, inner))
 	}

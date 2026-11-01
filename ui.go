@@ -111,9 +111,9 @@ func (m model) compactView(width int) string {
 		lines = append(lines, rows[start:min(len(rows), start+max(1, m.height-4))]...)
 		lines = append(lines, dimStyle.Render("←/→ conference · Esc · q"))
 	} else if m.showTeam {
-		lines = append(lines, sectionStyle.Render(favoriteLabel(m.favorite)+" SEASON"))
+		lines = append(lines, sectionStyle.Render(favoriteLabel(m.favorite)+" SEASON · "+strings.TrimLeft(teamTabNames[m.teamTab], "123 ")))
 		rows := m.teamLines()
-		start := min(m.teamScroll, m.maxTeamScroll())
+		start := min(m.teamTabScroll(), m.maxTeamScroll())
 		lines = append(lines, rows[start:min(len(rows), start+max(1, m.height-4))]...)
 		lines = append(lines, dimStyle.Render("↑/↓ game · Enter open · Esc · q"))
 	} else if m.showDetail {
