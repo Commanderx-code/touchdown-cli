@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"flag"
 	"io"
 	"net/http"
 	"os"
@@ -416,5 +417,43 @@ func TestValidateStatusFlags(t *testing.T) {
 		if (err != nil) != tc.wantErr {
 			t.Errorf("case %d %+v: err %v", i, tc, err)
 		}
+	}
+}
+
+func TestStatusLinePostponedAfterKickoffState(t *testing.T) {
+	now := time.Date(2026, 11, 1, 14, 30, 0, 0, time.UTC)
+	for _, desc := range []string{"Postponed", "Canceled"} {
+		board := statusBoard("post", "0:00", 0, desc, desc, "", "", "", false)
+		if got := statusLine(board, "GB", now, time.Time{}); got != "GB vs CAR · "+desc {
+			t.Errorf("%s with post state: got %q", desc, got)
+		}
+		lines := tickerLines(board, "GB", now, 80, false)
+		if !strings.HasSuffix(lines[2], desc) || strings.Contains(lines[2], " 0  ") {
+			t.Errorf("%s ticker line: %q", desc, lines[2])
+		}
+	}
+}
+
+func TestForwardedFlagsMakesConfigAbsolute(t *testing.T) {
+	fs := flag.NewFlagSet("td", flag.ContinueOnError)
+	fs.String("config", "", "")
+	fs.String("favorite", "", "")
+	fs.Bool("status", false, "")
+	if err := fs.Parse([]string{"-config=./x.json", "-favorite=GB", "-status"}); err != nil {
+		t.Fatal(err)
+	}
+	want, _ := filepath.Abs("./x.json")
+	forwarded := forwardedFlags(fs)
+	if len(forwarded) != 2 {
+		t.Fatalf("only config and favorite should be forwarded: %q", forwarded)
+	}
+	var got string
+	for _, a := range forwarded {
+		if strings.HasPrefix(a, "-config=") {
+			got = strings.TrimPrefix(a, "-config=")
+		}
+	}
+	if got != want {
+		t.Fatalf("config forwarded as %q, want %q", got, want)
 	}
 }
