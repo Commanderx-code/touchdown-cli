@@ -110,7 +110,8 @@ type model struct {
 	viewTeam                 string
 	view                     teamPage
 	showPicker               bool
-	pickerFromHome           bool
+	showOverview             bool
+	history                  []backTarget
 	pickerIndex              int
 	pickerScroll             int
 	pickerBuffer             string
@@ -531,16 +532,21 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 			return m.updatePickerKey(key, time.Now())
 		}
+		if key == "t" && m.showTeam && !m.showDetail {
+			return m.jumpToOpponent()
+		}
 		if key == "t" && !m.showHome && !m.showDetail && !m.showStandings && !m.showTeam {
 			m.pendingFavoriteGame = false
+			m.history = nil
 			return m.openPicker(), nil
 		}
 		if key == "c" {
 			m.pendingFavoriteGame = false
-			return m.openSettings(), nil
+			return m.consumeOverview().openSettings(), nil
 		}
 		if key == "p" && !m.showDetail && !m.showStandings && !m.showTeam && m.favorite != "" {
 			m.pendingFavoriteGame = false
+			m.history = nil
 			return m.openFavoriteSeason("")
 		}
 		switch key {
@@ -549,6 +555,9 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		case "esc", "backspace":
 			if m.showHome {
 				break
+			}
+			if m.canGoBack() {
+				return m.back()
 			}
 			wasStandings := m.showStandings
 			wasTeam := m.showTeam
@@ -623,6 +632,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 			games := m.visibleGames()
 			if !m.showDetail && !m.showStandings && !m.showTeam && m.selected < len(games) {
+				m = m.consumeOverview()
 				m.detailID = games[m.selected].ID
 				m.detailGame = games[m.selected]
 				m.detail = gameDetail{}
@@ -710,6 +720,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 		case "s":
 			if !m.showDetail && !m.showStandings && !m.showTeam && m.season > 0 {
+				m = m.consumeOverview()
 				m.standingsFromHome = m.showHome
 				m.showHome = false
 				m.showStandings = true
@@ -743,6 +754,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 func (m model) openHomeSelection() (model, tea.Cmd) {
 	m.pendingFavoriteGame = false
+	m.history = nil
 	m.showHome = false
 	m.showDetail = false
 	m.showStandings = false
