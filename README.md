@@ -8,9 +8,10 @@ Follow every game, keep your favorite team in focus, and open a game for box sco
 
 ## Features
 
-- **Scores dashboard:** Live, final, and upcoming games with a favorite-team card and a conference standings snapshot on wide terminals. Live rows show possession, down and distance, and red zone.
+- **Scores dashboard:** Live, final, and upcoming games grouped under kickoff-slot headers, with a favorite-team card and a conference standings snapshot on wide terminals. Live rows show possession, down and distance, and red zone.
 - **Scoring feed:** Every score across live games appears on the dashboard with the play that produced it.
-- **Favorite-team view:** Your next matchup and kickoff, latest result, bye week, season schedule, record, and passing, rushing, and receiving leaders.
+- **Team season pages:** Any team's season schedule, record, and passing, rushing, and receiving leaders. Your favorite's page adds the next matchup and kickoff, latest result, and bye week. Press `t` on any matchup to jump to the opponent's page and Esc to walk back.
+- **Season overview:** Weeks 1 to 18 at a glance with the game count, your favorite's matchup or result, and the teams on bye. Enter opens that week on the dashboard.
 - **Game center:** Team and player stats, play-by-play, quarter scores, scoring plays, and a drive timeline. Live games show possession, down and distance, timeouts remaining, and the latest play when available.
 - **Personalization:** Choose any NFL team and one of three themes (`mint`, `amber`, or `mono`). The favorite team also controls game filtering, standings focus, and optional score alerts.
 - **Offline fallback:** Successful responses are cached locally and can be shown if a later request fails.
@@ -42,7 +43,7 @@ make build
 
 Download a Linux, macOS, or Windows archive from the [latest release](https://github.com/Commanderx-code/touchdown-cli/releases/latest). Extract it and put `touchdown` (or `touchdown.exe` on Windows) somewhere on your `PATH`. The release also includes a SHA-256 checksum file so you can verify your download.
 
-Touchdown opens on a home menu. Choose all games, live games, your favorite team, its season page, or AFC/NFC standings with the arrow keys and Enter. Green Bay (`GB`) is the default favorite until you choose another team.
+Touchdown opens on a home menu. Choose all games, live games, your favorite team, its season page, AFC/NFC standings, the team picker (`Team schedules`), or the season overview (`Season`) with the arrow keys and Enter. Green Bay (`GB`) is the default favorite until you choose another team.
 
 ## Screenshots
 
@@ -66,6 +67,7 @@ Captured from Touchdown with Week 7 of the 2026 season selected. Scores shown he
 | `1`–`4` or `Tab` | Switch game-detail tabs |
 | `Page Up` / `Page Down` or mouse wheel | Scroll long lists |
 | `s` | Open standings from the home menu or dashboard |
+| `t` | Open the team picker on the dashboard; open the selected opponent's season on a season page |
 | `f` | Toggle the favorite-game filter on the dashboard |
 | `c` | Choose a favorite team and preview a theme; `Enter` saves, `Esc` cancels |
 | `r` / `?` | Refresh / show help and the score legend |

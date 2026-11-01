@@ -36,6 +36,12 @@ func (m model) View() string {
 	if m.showSettings {
 		return m.renderSettings(width)
 	}
+	if m.showPicker {
+		return m.renderPicker(width)
+	}
+	if m.showOverview {
+		return m.renderOverview(width)
+	}
 	if m.showHome {
 		return m.renderHome(width)
 	}
@@ -64,22 +70,22 @@ func (m model) View() string {
 	} else {
 		panel = m.renderBoard(inner)
 	}
-	footer := fmt.Sprintf("↑/↓ games  ·  Enter details  ·  g %s  ·  p season  ·  c settings  ·  ? help  ·  f filter  ·  s standings  ·  Esc menu  ·  q quit", m.favorite)
+	footer := fmt.Sprintf("↑/↓ games  ·  Enter details  ·  g %s  ·  p season  ·  t teams  ·  c settings  ·  ? help  ·  f filter  ·  s standings  ·  Esc menu  ·  q quit", m.favorite)
 	if m.showStandings {
 		footer = "←/→ conference  ·  ↑/↓, PgUp/PgDn, wheel scroll  ·  Esc back  ·  q quit"
 	} else if m.showTeam {
-		footer = "↑/↓ select game  ·  Enter open  ·  Esc back  ·  r refresh  ·  q quit"
+		footer = "↑/↓ select game  ·  Enter open  ·  t opponent  ·  Esc back  ·  r refresh  ·  q quit"
 	} else if m.showDetail {
 		footer = "1/2/3/4 tabs  ·  ↑/↓ scroll  ·  Esc back  ·  r refresh  ·  q quit"
 	}
 	if width < 100 && !m.showStandings && !m.showDetail && !m.showTeam {
-		footer = fmt.Sprintf("↑/↓ · Enter · g %s · p season · c settings · ? help · s standings · q", m.favorite)
+		footer = fmt.Sprintf("↑/↓ · Enter · g %s · p season · t teams · s standings · c settings · ? help · q", m.favorite)
 	}
 	if width < 68 {
 		if m.showStandings {
 			footer = "←/→ AFC/NFC · ↑/↓/wheel · Esc · q"
 		} else if m.showTeam {
-			footer = "↑/↓ game · Enter open · Esc · q"
+			footer = "↑/↓ game · Enter · t opponent · Esc · q"
 		} else if m.showDetail {
 			footer = "1/2/3/4 tabs · ↑/↓ scroll · Esc back · q"
 		} else {
@@ -162,6 +168,17 @@ func (m model) scoreboardPanel(inner, maxRows int) string {
 	start := max(0, m.selected-rows/2)
 	start = min(start, max(0, count-rows))
 	end := min(count, start+rows)
+	headers := m.slotHeadersEnabled()
+	if headers && maxRows > 0 {
+		// Header lines share the game-row budget: shrink the window until
+		// games and the headers between them fit in maxRows*2 lines.
+		for rows > 1 && rows*2+m.slotHeaderCount(start, end) > maxRows*2 {
+			rows--
+			start = max(0, m.selected-rows/2)
+			start = min(start, max(0, count-rows))
+			end = min(count, start+rows)
+		}
+	}
 	meta := fmt.Sprintf("WEEK %d MATCHUPS  ·  %d GAMES", m.week, count)
 	if m.season == 0 {
 		meta = "NFL MATCHUPS"
@@ -192,8 +209,13 @@ func (m model) scoreboardPanel(inner, maxRows int) string {
 		}
 		lines = append(lines, dimStyle.Render(message))
 	}
+	previousSlot := ""
 	for i := start; i < end; i++ {
 		g := games[i]
+		if slot := slotLabel(g); headers && (i == start || slot != previousSlot) {
+			lines = append(lines, dimStyle.Render(padLine(slot, inner)))
+			previousSlot = slot
+		}
 		away, home := g.sides()
 		selected := i == m.selected
 		marker := " "
@@ -634,4 +656,42 @@ func centerBlock(block string, terminalWidth int) string {
 		b.WriteString(prefix + line)
 	}
 	return b.String()
+}
+
+// kickoffSlot is the local kickoff day and time a game shares with the rest
+// of its slot, "SUN 1:00 PM", or "" when ESPN gave no kickoff time.
+func kickoffSlot(g game) string {
+	t := g.dateTime()
+	if t.IsZero() {
+		return ""
+	}
+	return strings.ToUpper(t.Local().Format("Mon 3:04 PM"))
+}
+
+func slotLabel(g game) string {
+	if slot := kickoffSlot(g); slot != "" {
+		return slot
+	}
+	return "TBD"
+}
+
+// slotHeadersEnabled is true when the scoreboard groups games under kickoff
+// slots: never in the favorite filter or compact mode, and only with room.
+func (m model) slotHeadersEnabled() bool {
+	return !m.favoritesOnly && !m.compact && m.height >= 24
+}
+
+// slotHeaderCount is the number of header lines the scoreboard window
+// start..end renders between its games.
+func (m model) slotHeaderCount(start, end int) int {
+	games := m.visibleGames()
+	n := 0
+	previous := ""
+	for i := start; i < end && i < len(games); i++ {
+		if slot := slotLabel(games[i]); i == start || slot != previous {
+			n++
+			previous = slot
+		}
+	}
+	return n
 }
