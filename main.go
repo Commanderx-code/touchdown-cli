@@ -987,6 +987,9 @@ func (m model) openHomeSelection() (model, tea.Cmd) {
 	return m, nil
 }
 
+// version is set when a release is built.
+var version = "dev"
+
 func main() {
 	defaultPath, err := defaultConfigPath()
 	if err != nil {
@@ -1010,8 +1013,13 @@ func main() {
 	split := flag.Bool("split", false, "with -status, open the ticker in a new multiplexer pane")
 	refresh := flag.Bool("refresh", false, "refresh the status cache and exit (used by -status)")
 	live := flag.Bool("live", false, "with -status, print the line only while the favorite's or a followed game is in progress")
+	showVersion := flag.Bool("version", false, "print the version and exit")
 	follow := flag.String("follow", "", `save followed teams as a comma-separated list (e.g. KC,DET) and exit; "" clears them`)
 	flag.Parse()
+	if *showVersion {
+		fmt.Println("touchdown", version)
+		return
+	}
 	if *setFavorite != "" {
 		team, err := saveFavorite(*configPath, *setFavorite)
 		if err != nil {
