@@ -275,3 +275,9 @@ func TestWatchReportsAFailedAlertOnce(t *testing.T) {
 		t.Fatalf("reported %d times: %q", got, buffer.String())
 	}
 }
+
+func TestVersionDefaultsToDevelopmentBuild(t *testing.T) {
+	if version == "" {
+		t.Fatal("version must never be empty")
+	}
+}
