@@ -174,7 +174,7 @@ func TestLiveGameHeaderShowsPossessionAndLatestPlay(t *testing.T) {
 	}
 	m := model{board: board, detailID: "live", detailGame: board.Events[0], showDetail: true, width: 80, height: 24}
 	view := m.View()
-	for _, part := range []string{"BALL GB", "3RD & 7", "LATEST", "Jordan Love"} {
+	for _, part := range []string{"GB ball", "3rd & 7", "LATEST", "Jordan Love"} {
 		if !strings.Contains(view, part) {
 			t.Fatalf("missing %q from live header: %s", part, view)
 		}
@@ -186,7 +186,7 @@ func TestLiveGameHeaderShowsPossessionAndLatestPlay(t *testing.T) {
 	}
 	fromSeason := model{board: board, teamData: schedule, teamSeason: 2026, season: 2026, favorite: "GB", showTeam: true, width: 80, height: 24}
 	fromSeason = key(fromSeason, "enter")
-	if !strings.Contains(fromSeason.View(), "BALL GB") || !fromSeason.detailFromTeam {
+	if !strings.Contains(fromSeason.View(), "GB ball") || !fromSeason.detailFromTeam {
 		t.Fatal("season selection lost live scoreboard situation")
 	}
 }
