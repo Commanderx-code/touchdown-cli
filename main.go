@@ -109,6 +109,12 @@ type model struct {
 	feedPending              map[string]int
 	viewTeam                 string
 	view                     teamPage
+	showPicker               bool
+	pickerFromHome           bool
+	pickerIndex              int
+	pickerScroll             int
+	pickerBuffer             string
+	pickerTyped              time.Time
 }
 
 func (m model) loadBoard() tea.Cmd {
@@ -519,6 +525,16 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if m.showSettings {
 			return m.updateSettingsKey(key)
 		}
+		if m.showPicker {
+			if key == "q" || key == "ctrl+c" {
+				return m, tea.Quit
+			}
+			return m.updatePickerKey(key, time.Now())
+		}
+		if key == "t" && !m.showHome && !m.showDetail && !m.showStandings && !m.showTeam {
+			m.pendingFavoriteGame = false
+			return m.openPicker(), nil
+		}
 		if key == "c" {
 			m.pendingFavoriteGame = false
 			return m.openSettings(), nil
@@ -756,6 +772,9 @@ func (m model) openHomeSelection() (model, tea.Cmd) {
 			m.teamLeadersLoading = true
 			return m, m.loadTeamLeaders(m.teamData)
 		}
+	case 6:
+		m.showHome = true
+		return m.openPicker(), nil
 	case 4, 5:
 		m.standingsFromHome = true
 		m.showStandings = true
