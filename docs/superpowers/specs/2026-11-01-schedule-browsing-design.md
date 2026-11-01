@@ -133,6 +133,29 @@ and jumps to it.
   `t opponent`; home shows the two new items; `?` lists `t` and the
   `Season` item under QUICK KEYS.
 
+## Calls made after the builder check
+
+- The overview is regular season only: it fetches `scoreboard(season, week, 2)`
+  whatever the dashboard's `-type`, and Enter sets the dashboard to season
+  type 2 and that week. Before the first scoreboard arrives (`season == 0`)
+  the overview and picker show `Loading season…` and accept only Esc.
+- Overview rows are W1 to W18 in order with the cursor on the current
+  dashboard week and the viewport scrolled to show it. Loading is
+  cursor-driven, not viewport-driven: on open fetch the current week and
+  two either side (at most 5 requests), then fetch a week when the cursor
+  lands on it or beside it. Unloaded rows show `…`.
+- The "return to overview" entry survives `←`/`→` and `f` on the
+  dashboard and is consumed by opening any other screen (game, standings,
+  settings, picker, season page). Changing the favorite in settings never
+  touches the viewed team or the stack.
+- Nested opponent jumps restore the previous team by reloading it from
+  cache at the top of the page; scroll and selection reset. The stack
+  entry holds only the team abbreviation.
+- The overview is a session snapshot: it refetches on open, cursor moves
+  and `r`, never on the 30-second tick. Its fetches use their own message
+  type and never write the dashboard board, so they cannot trigger alerts
+  or the scoring feed.
+
 ## Left to the builder
 
 - Shape of the history stack entry and where the new screen flags live
