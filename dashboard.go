@@ -45,15 +45,7 @@ func (m model) dashboardSummary(width int) string {
 	return centerLine(clipStyled(strings.Join(parts, "    "), width), width)
 }
 
-func (m model) favoriteMatch() (game, bool) {
-	for _, g := range m.board.Events {
-		away, home := g.sides()
-		if away.Team.Abbreviation == m.favorite || home.Team.Abbreviation == m.favorite {
-			return g, true
-		}
-	}
-	return game{}, false
-}
+func (m model) favoriteMatch() (game, bool) { return favoriteGame(m.board, m.favorite) }
 
 func (m model) favoriteRecord() string {
 	if m.favorite == "" {
