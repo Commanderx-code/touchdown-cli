@@ -3,10 +3,13 @@ package main
 import (
 	"context"
 	"errors"
+	"fmt"
 	"io"
 	"net/http"
+	"sort"
 	"strings"
 	"testing"
+	"time"
 
 	tea "github.com/charmbracelet/bubbletea"
 )
@@ -394,5 +397,123 @@ func TestPlayerCardNoStatsAndError(t *testing.T) {
 	}
 	if !strings.Contains(m.View(), "PASSING") {
 		t.Fatal("refetched stats must render")
+	}
+}
+
+// injuriesByTeamClient serves GB's injury report and an empty one for everyone else.
+func injuriesByTeamClient(t *testing.T, seen *[]string) *client {
+	t.Helper()
+	return &client{http: &http.Client{Transport: roundTripFunc(func(req *http.Request) (*http.Response, error) {
+		if seen != nil {
+			*seen = append(*seen, req.URL.Path+"?"+req.URL.RawQuery)
+		}
+		body := `{}`
+		if strings.HasSuffix(req.URL.Path, "/injuries") {
+			body = `{"injuries":[]}`
+			if req.URL.Query().Get("team") == "gb" {
+				body = injuriesJSON
+			}
+		}
+		return &http.Response{StatusCode: 200, Body: io.NopCloser(strings.NewReader(body)), Header: make(http.Header)}, nil
+	})}}
+}
+
+func injuryRequests(seen []string) []string {
+	var out []string
+	for _, u := range seen {
+		if strings.Contains(u, "/injuries") {
+			out = append(out, u[strings.Index(u, "team=")+5:])
+		}
+	}
+	return out
+}
+
+func boardDated(t *testing.T, when time.Time) scoreboard {
+	t.Helper()
+	b := boardAt(t, "1", "pre", "", "")
+	b.Events[0].Date = when.UTC().Format("2006-01-02T15:04Z")
+	return b
+}
+
+func TestGameCenterInjurySectionWithinWindow(t *testing.T) {
+	var seen []string
+	m := favoriteSeasonModel(t)
+	m.api = injuriesByTeamClient(t, &seen)
+	m.board = boardDated(t, time.Now().Add(-time.Hour))
+	m.width, m.height = 100, 36
+	m = press(t, m, "enter")
+	if !m.showDetail {
+		t.Fatal("enter must open the game center")
+	}
+	got := injuryRequests(seen)
+	sort.Strings(got)
+	if strings.Join(got, " ") != "car gb" {
+		t.Fatalf("game center must request both teams' reports once: %v", got)
+	}
+	m = press(t, m, "4")
+	view := m.View()
+	for _, want := range []string{"INJURY REPORT", "OUT  DE  Micah Parsons (Knee - ACL)", "No Out, Doubtful or Questionable players."} {
+		if !strings.Contains(view, want) {
+			t.Fatalf("center tab missing %q:\n%s", want, view)
+		}
+	}
+	if strings.Index(view, "CAR") > strings.Index(view, "No Out, Doubtful") {
+		t.Fatalf("away team must come first:\n%s", view)
+	}
+	var many []injury
+	for i := 0; i < 9; i++ {
+		many = append(many, injury{Name: fmt.Sprintf("Player %d", i), Status: "Out", Position: "WR"})
+	}
+	m.injuryReports["GB"] = injuryEntry{Report: injuryReport{Team: "GB", Entries: many}}
+	if view := m.View(); !strings.Contains(view, "+1 more") || strings.Contains(view, "Player 8") {
+		t.Fatalf("cap at 8 rows:\n%s", view)
+	}
+
+	seen = nil
+	old := favoriteSeasonModel(t)
+	old.api = injuriesByTeamClient(t, &seen)
+	old.board = boardDated(t, time.Now().Add(-30*24*time.Hour))
+	old.width, old.height = 100, 36
+	old = press(t, press(t, old, "enter"), "4")
+	if len(injuryRequests(seen)) != 0 || strings.Contains(old.View(), "INJURY REPORT") {
+		t.Fatalf("old game must not fetch or show injuries: %v\n%s", injuryRequests(seen), old.View())
+	}
+}
+
+func TestSpotlightShowsInjuryCount(t *testing.T) {
+	m := dashboardModel(t)
+	m.width, m.height = 120, 36
+	report, err := jsonClient(t, func(*http.Request) {}, injuriesJSON).injuries(context.Background(), "GB")
+	if err != nil {
+		t.Fatal(err)
+	}
+	m = m.applyInjuries(injuriesMsg{team: "GB", report: report})
+	if view := m.View(); !strings.Contains(view, "INJURIES  1 OUT · 1 Q") {
+		t.Fatalf("spotlight must count game-day injuries:\n%s", view)
+	}
+	m.injuryReports["GB"] = injuryEntry{Loading: true}
+	if strings.Contains(m.View(), "INJURIES") {
+		t.Fatal("no injury line while loading")
+	}
+	m.api = injuriesByTeamClient(t, nil)
+	found := false
+	for _, msg := range runCmds(m.Init()) {
+		if reply, ok := msg.(injuriesMsg); ok && reply.team == "GB" {
+			found = true
+		}
+	}
+	if !found {
+		t.Fatal("Init must request the favorite's injury report")
+	}
+}
+
+func TestRosterUnknownGroupKeySanitized(t *testing.T) {
+	body := `{"athletes":[{"position":"weird\u001b[31m\u0007\r\nkey","items":[{"id":"9","displayName":"Some One","position":{"abbreviation":"K"}}]}]}`
+	r, err := jsonClient(t, func(*http.Request) {}, body).roster(context.Background(), "GB")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(r.Groups) != 1 || r.Groups[0].Title != "WEIRD[31MKEY" {
+		t.Fatalf("title must be sanitized and upper-cased: %q", r.Groups[0].Title)
 	}
 }

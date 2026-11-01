@@ -117,7 +117,7 @@ func (c *client) roster(ctx context.Context, team string) (roster, error) {
 	}
 	for _, key := range keys {
 		if !known[key] && len(byKey[key]) > 0 {
-			out.Groups = append(out.Groups, rosterGroup{Key: key, Title: strings.ToUpper(key), Players: byKey[key]})
+			out.Groups = append(out.Groups, rosterGroup{Key: key, Title: strings.ToUpper(plainText(key)), Players: byKey[key]})
 		}
 	}
 	return out, nil
