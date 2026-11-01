@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"errors"
 	"net/http"
 	"strings"
 	"testing"
@@ -125,5 +126,59 @@ func TestPlayerOverviewSlicesCategories(t *testing.T) {
 	stats, err = jsonClient(t, func(*http.Request) {}, `{"statistics":null}`).playerOverview(context.Background(), "1")
 	if err != nil || len(stats.Sections) != 0 {
 		t.Fatalf("no stats: %+v err %v", stats.Sections, err)
+	}
+}
+
+func TestRequestInjuriesOncePerTeamAndStoresReply(t *testing.T) {
+	m := model{api: jsonClient(t, func(*http.Request) {}, injuriesJSON)}
+	m, cmd := m.requestInjuries("GB", false)
+	if cmd == nil {
+		t.Fatal("first request must fetch")
+	}
+	if entry, ok := m.injuriesFor("GB"); !ok || !entry.Loading {
+		t.Fatalf("entry after request: %+v ok %v", entry, ok)
+	}
+	if _, again := m.requestInjuries("GB", false); again != nil {
+		t.Fatal("in-flight request must not refetch")
+	}
+	next, _ := m.Update(runCmds(cmd)[0])
+	m = next.(model)
+	entry, ok := m.injuriesFor("GB")
+	if !ok || entry.Loading || entry.Error != "" || len(entry.Report.Entries) != 3 {
+		t.Fatalf("stored entry: %+v", entry)
+	}
+	if _, again := m.requestInjuries("GB", false); again != nil {
+		t.Fatal("loaded entry must not refetch without force")
+	}
+	if _, forced := m.requestInjuries("GB", true); forced == nil {
+		t.Fatal("force must refetch")
+	}
+	m = m.applyInjuries(injuriesMsg{team: "DET", err: errors.New("boom")})
+	if entry, _ := m.injuriesFor("DET"); entry.Error != "boom" || entry.Loading {
+		t.Fatalf("error entry: %+v", entry)
+	}
+}
+
+func TestRosterAndPlayerStores(t *testing.T) {
+	m := model{api: jsonClient(t, func(*http.Request) {}, rosterJSON)}
+	m, cmd := m.requestRoster("GB", false)
+	next, _ := m.Update(runCmds(cmd)[0])
+	m = next.(model)
+	if entry, ok := m.rosterFor("GB"); !ok || entry.Loading || len(entry.Data.Groups) != 2 {
+		t.Fatalf("roster entry: %+v", entry)
+	}
+	if _, again := m.requestRoster("GB", false); again != nil {
+		t.Fatal("loaded roster must not refetch")
+	}
+	m.api = jsonClient(t, func(*http.Request) {}, overviewJSON)
+	m, cmd = m.requestPlayer("3918298", false)
+	next, _ = m.Update(runCmds(cmd)[0])
+	m = next.(model)
+	if entry, ok := m.playerFor("3918298"); !ok || entry.Loading || len(entry.Stats.Sections) != 2 {
+		t.Fatalf("player entry: %+v", entry)
+	}
+	m = m.applyPlayer(playerMsg{id: "x", err: errors.New("bad")})
+	if entry, _ := m.playerFor("x"); entry.Error != "bad" {
+		t.Fatalf("player error: %+v", entry)
 	}
 }
