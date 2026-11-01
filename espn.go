@@ -70,11 +70,15 @@ type competition struct {
 }
 
 type gameSituation struct {
-	Possession string `json:"possession"`
-	Down       int    `json:"down"`
-	Distance   int    `json:"distance"`
-	IsRedZone  bool   `json:"isRedZone"`
-	LastPlay   struct {
+	Possession       string `json:"possession"`
+	Down             int    `json:"down"`
+	Distance         int    `json:"distance"`
+	IsRedZone        bool   `json:"isRedZone"`
+	DownDistanceText string `json:"downDistanceText"`
+	PossessionText   string `json:"possessionText"`
+	HomeTimeouts     *int   `json:"homeTimeouts"`
+	AwayTimeouts     *int   `json:"awayTimeouts"`
+	LastPlay         struct {
 		Text string `json:"text"`
 	} `json:"lastPlay"`
 }
@@ -214,6 +218,9 @@ type play struct {
 	Type struct {
 		Text string `json:"text"`
 	} `json:"type"`
+	ScoringType struct {
+		Abbreviation string `json:"abbreviation"`
+	} `json:"scoringType"`
 	Period struct {
 		Number int `json:"number"`
 	} `json:"period"`

@@ -137,6 +137,11 @@ func (m model) compactView(width int) string {
 			if g.Status.Type.State != "pre" {
 				line = fmt.Sprintf("%s %s %s – %s %s  %s", marker, away.Team.Abbreviation, away.Score, home.Score, home.Team.Abbreviation, g.statusText())
 			}
+			if width >= 60 {
+				if situation := situationText(g); situation != "" {
+					line += "  " + situation
+				}
+			}
 			lines = append(lines, textStyle.Render(line))
 		}
 		lines = append(lines, dimStyle.Render("↑/↓ · Enter · g game · p season · q"))
@@ -218,23 +223,32 @@ func (m model) scoreboardPanel(inner, maxRows int) string {
 			}
 		}
 		badge := strings.ToUpper(g.statusText())
-		if g.Status.Type.State == "in" {
+		live := g.Status.Type.State == "in"
+		if live {
 			badge = "● LIVE  " + badge
+			if situation := situationText(g); situation != "" {
+				badge += "  ·  " + situation
+			}
 		}
 		if g.Status.Type.State == "pre" {
 			badge = "UPCOMING  ·  " + badge
 		}
 		venue := ""
-		if len(g.Competitions) > 0 {
+		if len(g.Competitions) > 0 && !live {
 			venue = g.Competitions[0].Venue.FullName
 		}
 		if venue != "" {
 			badge += "  ·  " + venue
 		}
+		redZone := live && len(g.Competitions) > 0 && g.Competitions[0].Situation.IsRedZone
 		matchup = clipText(matchup, inner)
 		badge = clipText("   "+badge, inner)
 		if selected {
-			lines = append(lines, selectedStyle.Render(padLine(matchup, inner)), selectedStyle.Render(padLine(badge, inner)))
+			badgeStyle := selectedStyle
+			if redZone {
+				badgeStyle = liveStyle
+			}
+			lines = append(lines, selectedStyle.Render(padLine(matchup, inner)), badgeStyle.Render(padLine(badge, inner)))
 		} else {
 			lines = append(lines, textStyle.Render(padLine(matchup, inner)))
 			if g.Status.Type.State == "in" {
