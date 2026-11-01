@@ -45,6 +45,12 @@ func (m model) View() string {
 	if m.showPlayer {
 		return m.renderPlayer(width)
 	}
+	if m.showPlayoffs {
+		return m.renderPlayoffs(width)
+	}
+	if m.showLeaders {
+		return m.renderLeaders(width)
+	}
 	if m.showHome {
 		return m.renderHome(width)
 	}
@@ -74,7 +80,7 @@ func (m model) View() string {
 	if m.showStandings {
 		footer = "←/→ conference  ·  ↑/↓, PgUp/PgDn, wheel scroll  ·  Esc back  ·  q quit"
 	} else if m.showTeam {
-		footer = "1/2/3 tabs  ·  ↑/↓ select  ·  Enter open  ·  t opponent  ·  Esc back  ·  r refresh  ·  q quit"
+		footer = m.seasonFooter(width)
 	} else if m.showDetail {
 		footer = "1/2/3/4 tabs  ·  ↑/↓ scroll  ·  Esc back  ·  r refresh  ·  q quit"
 	}
@@ -85,7 +91,7 @@ func (m model) View() string {
 		if m.showStandings {
 			footer = "←/→ AFC/NFC · ↑/↓/wheel · Esc · q"
 		} else if m.showTeam {
-			footer = "1/2/3 · ↑/↓ · Enter · t · Esc · q"
+			footer = m.seasonFooter(width)
 		} else if m.showDetail {
 			footer = "1/2/3/4 tabs · ↑/↓ scroll · Esc back · q"
 		} else {
@@ -120,11 +126,11 @@ func (m model) compactView(width int) string {
 		lines = append(lines, rows[start:min(len(rows), start+max(1, m.height-4))]...)
 		lines = append(lines, dimStyle.Render("←/→ conference · Esc · q"))
 	} else if m.showTeam {
-		lines = append(lines, sectionStyle.Render(favoriteLabel(m.favorite)+" SEASON · "+strings.TrimLeft(teamTabNames[m.teamTab], "123 ")))
+		lines = append(lines, sectionStyle.Render(favoriteLabel(m.activeTeamPage().Team)+" SEASON · "+strings.TrimLeft(teamTabNames[m.teamTab], "123 ")))
 		rows := m.teamLines()
 		start := min(m.teamTabScroll(), m.maxTeamScroll())
 		lines = append(lines, rows[start:min(len(rows), start+max(1, m.height-4))]...)
-		lines = append(lines, dimStyle.Render("↑/↓ game · Enter open · Esc · q"))
+		lines = append(lines, dimStyle.Render("1/2/3 · ↑/↓ · Enter · Esc · q"))
 	} else if m.showDetail {
 		lines = append(lines, sectionStyle.Render("GAME CENTER · "+[]string{"TEAM STATS", "PLAYERS", "PLAY-BY-PLAY", "CENTER"}[m.detailTab]))
 		context := m.liveContextLines()
@@ -485,11 +491,14 @@ func wrapWords(s string, width int) []string {
 	return lines
 }
 
-func (m model) conferenceName() string {
-	if m.standingsConference < len(m.standings.Children) {
-		return m.standings.Children[m.standingsConference].Abbreviation
+func (m model) conferenceName() string { return m.conferenceLabel(m.standingsConference) }
+
+// conferenceLabel names a conference by its place in the standings.
+func (m model) conferenceLabel(index int) string {
+	if index < len(m.standings.Children) {
+		return m.standings.Children[index].Abbreviation
 	}
-	if m.standingsConference == 1 {
+	if index == 1 {
 		return "NFC"
 	}
 	return "AFC"

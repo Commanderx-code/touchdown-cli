@@ -80,8 +80,10 @@ func (m model) homeOptions() []string {
 		}
 	}
 	favoriteCount := 0
-	if _, ok := m.favoriteMatch(); ok {
-		favoriteCount = 1
+	for _, g := range m.board.Events {
+		if m.watching(g) {
+			favoriteCount++
+		}
 	}
 	favorite := favoriteLabel(m.favorite)
 	return []string{
@@ -93,6 +95,8 @@ func (m model) homeOptions() []string {
 		"AFC STANDINGS",
 		"TEAM SCHEDULES",
 		"SEASON",
+		"PLAYOFFS",
+		"LEAGUE LEADERS",
 	}
 }
 
@@ -104,8 +108,7 @@ func (m model) renderHome(width int) string {
 	if m.compact {
 		height = min(height, 15)
 	}
-	if height < 13 {
-		options := m.homeOptions()
+	if options := m.homeOptions(); height < len(options)+5 {
 		return accentStyle.Render("◆ TOUCHDOWN") + "\n" + selectedStyle.Render("› "+options[m.homeSelection]) + "\n" + dimStyle.Render("↑/↓ · Enter · g game · q")
 	}
 	inner := min(62, width-8)
@@ -116,10 +119,10 @@ func (m model) renderHome(width int) string {
 		inner = max(12, width-4)
 	}
 	var lines []string
-	if height >= 16 {
+	if height >= len(m.homeOptions())+8 {
 		lines = append(lines, sectionStyle.Render("SELECT A VIEW"), borderStyle.Render(strings.Repeat("─", inner)))
 	}
-	icons := []string{"◉", "●", "★", "▦", "◌", "◌", "▤", "▥"}
+	icons := []string{"◉", "●", "★", "▦", "◌", "◌", "▤", "▥", "◆", "▲"}
 	for i, option := range m.homeOptions() {
 		marker := " "
 		if i == m.homeSelection {

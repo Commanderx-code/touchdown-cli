@@ -28,6 +28,7 @@ type injuryReport struct {
 	Team     string
 	Entries  []injury
 	CachedAt time.Time
+	listed   map[string]bool // every athlete ID and name the feed mentioned
 }
 
 var athleteIDPattern = regexp.MustCompile(`/id/(\d+)/`)
@@ -60,11 +61,8 @@ func (c *client) injuries(ctx context.Context, team string) (injuryReport, error
 	if err != nil {
 		return injuryReport{}, err
 	}
-	report := injuryReport{Team: team, CachedAt: cachedAt}
+	report := injuryReport{Team: team, CachedAt: cachedAt, listed: map[string]bool{}}
 	for _, entry := range response.Injuries {
-		if entry.Status == "Active" {
-			continue
-		}
 		row := injury{
 			Name:       plainText(entry.Athlete.DisplayName),
 			Position:   plainText(entry.Athlete.Position.Abbreviation),
@@ -78,14 +76,16 @@ func (c *client) injuries(ctx context.Context, team string) (injuryReport, error
 		for _, link := range entry.Athlete.Links {
 			if match := athleteIDPattern.FindStringSubmatch(link.Href); match != nil {
 				row.AthleteID = match[1]
+				report.listed[row.AthleteID] = true
 				break
 			}
 		}
-		report.Entries = append(report.Entries, row)
+		report.listed[row.Name] = true
+		if entry.Status != "Active" {
+			report.Entries = append(report.Entries, row)
+		}
 	}
-	sort.SliceStable(report.Entries, func(i, j int) bool {
-		return injuryRank(report.Entries[i].Status) < injuryRank(report.Entries[j].Status)
-	})
+	sortInjuries(report.Entries)
 	return report, nil
 }
 
@@ -190,4 +190,58 @@ func returnLabel(date string) string {
 		return ""
 	}
 	return "back " + t.Format("Jan 2")
+}
+
+// fullInjuries is the feed completed from the roster. The feed holds only the
+// 25 newest updates, most of them players already cleared, so anyone hurt for
+// weeks falls off it; injured reserve above all. The roster lists every
+// status but no body part or note, so the feed's row wins where both have
+// one. The report still loads when the roster does not.
+func (c *client) fullInjuries(ctx context.Context, team string) (injuryReport, error) {
+	report, err := c.injuries(ctx, team)
+	if err != nil {
+		return report, err
+	}
+	if data, err := c.roster(ctx, team); err == nil {
+		report = report.withRoster(data)
+	}
+	return report, nil
+}
+
+// withRoster adds every injured roster player the feed never mentioned. A
+// player the feed lists as Active stays off: its update is the newer one.
+func (r injuryReport) withRoster(data roster) injuryReport {
+	if r.CachedAt.IsZero() {
+		r.CachedAt = data.CachedAt
+	}
+	for _, group := range data.Groups {
+		for _, p := range group.Players {
+			if p.Injury == "" || p.Injury == "Active" || r.listed[p.ID] || r.listed[p.Name] {
+				continue
+			}
+			r.Entries = append(r.Entries, injury{AthleteID: p.ID, Name: p.Name, Position: p.Position, Status: p.Injury, Code: rosterStatusCode(p.Injury)})
+		}
+	}
+	sortInjuries(r.Entries)
+	return r
+}
+
+// rosterStatusCode shortens a status the feed never gave a code for.
+func rosterStatusCode(status string) string {
+	switch status {
+	case "Day-To-Day":
+		return "DTD"
+	case "Physically Unable to Perform":
+		return "PUP"
+	case "Non-Football Injury":
+		return "NFI"
+	}
+	code := []rune(strings.ToUpper(status))
+	return string(code[:min(4, len(code))])
+}
+
+func sortInjuries(rows []injury) {
+	sort.SliceStable(rows, func(i, j int) bool {
+		return injuryRank(rows[i].Status) < injuryRank(rows[j].Status)
+	})
 }

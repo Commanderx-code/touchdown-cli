@@ -152,6 +152,9 @@ func (m model) playerLines(inner int) []string {
 	}
 	lines = append(lines, "", sectionStyle.Render("SEASON STATS"))
 	entry, ok := m.playerFor(p.ID)
+	if notice := staleLine(entry.Stats.CachedAt, ""); notice != "" {
+		lines = append(lines, liveStyle.Render(clipText(notice, inner)))
+	}
 	switch {
 	case !ok || entry.Loading && entry.Stats.ID == "":
 		lines = append(lines, dimStyle.Render("Loading stats…"))

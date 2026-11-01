@@ -21,7 +21,7 @@ func (m model) canGoBack() bool {
 	if len(m.history) == 0 {
 		return false
 	}
-	if m.showPicker || m.showOverview || (m.showTeam && !m.showDetail) {
+	if m.showPicker || m.showOverview || m.showPlayoffs || m.showLeaders || (m.showTeam && !m.showDetail) {
 		return true
 	}
 	onDashboard := !m.showHome && !m.showDetail && !m.showStandings && !m.showTeam && !m.showSettings
@@ -37,6 +37,8 @@ func (m model) back() (model, tea.Cmd) {
 	m.history = m.history[:len(m.history)-1]
 	m.showPicker = false
 	m.showOverview = false
+	m.showPlayoffs = false
+	m.showLeaders = false
 	m.showTeam = false
 	m.showDetail = false
 	m.showStandings = false
@@ -74,7 +76,7 @@ func (m model) consumeOverview() model {
 // on the current season page, remembering the current page for Esc.
 func (m model) jumpToOpponent() (model, tea.Cmd) {
 	page := m.activeTeamPage()
-	if page.Season != m.season || len(page.Data.Events) == 0 {
+	if m.teamTab != tabSchedule || page.Season != m.season || len(page.Data.Events) == 0 {
 		return m, nil
 	}
 	event := page.Data.Events[max(0, min(m.teamSelected, len(page.Data.Events)-1))]

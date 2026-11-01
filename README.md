@@ -11,9 +11,11 @@ Follow every game, keep your favorite team in focus, and open a game for box sco
 - **Scores dashboard:** Live, final, and upcoming games grouped under kickoff-slot headers, with a favorite-team card and a conference standings snapshot on wide terminals. Live rows show possession, down and distance, and red zone.
 - **Scoring feed:** Every score across live games appears on the dashboard with the play that produced it.
 - **Team season pages:** Any team's season schedule, record, and passing, rushing, and receiving leaders. Your favorite's page adds the next matchup and kickoff, latest result, and bye week. Press `t` on any matchup to jump to the opponent's page and Esc to walk back.
-- **Rosters and injury reports:** Every season page has roster and injury tabs. The injury report shows status, body part, expected return, and the latest note; the game center lists both teams' Out, Doubtful, and Questionable players, and the favorite's card counts them.
+- **Rosters and injury reports:** Every season page has roster and injury tabs. The injury report shows status, body part, expected return, and the latest note; the game center lists both teams' Out, Doubtful, and Questionable players, and the favorite's spotlight panel counts them. Players on injured reserve and anyone else ESPN's feed has dropped come from the roster, without a body part or note.
 - **Player cards:** Enter on any roster or injury row opens the player's bio, injury status, and this season's stat lines.
 - **Season overview:** Weeks 1 to 18 at a glance with the game count, your favorite's matchup or result, and the teams on bye. Enter opens that week on the dashboard.
+- **Playoffs:** The playoff picture for each conference, with seeds, wild cards, the teams in the hunt, and the first-round games if the season ended today. A bracket tab follows every postseason round.
+- **League leaders:** The top five in twelve categories. Enter opens a player's card.
 - **Game center:** Team and player stats, play-by-play, quarter scores, scoring plays, and a drive timeline. Live games show possession, down and distance, timeouts remaining, and the latest play when available.
 - **Personalization:** Choose any NFL team and one of three themes (`mint`, `amber`, or `mono`). The favorite team also controls game filtering, standings focus, and optional score alerts.
 - **Offline fallback:** Successful responses are cached locally and can be shown if a later request fails.
@@ -69,6 +71,7 @@ Captured from Touchdown with Week 7 of the 2026 season selected. Scores shown he
 | `1`–`4` or `Tab` | Switch game-detail tabs; `1`–`3` switch season page tabs (schedule, roster, injuries) |
 | `Page Up` / `Page Down` or mouse wheel | Scroll long lists |
 | `s` | Open standings from the home menu or dashboard |
+| `P` / `L` | Open the playoffs or league leaders from the home menu or dashboard |
 | `t` | Open the team picker on the dashboard; open the selected opponent's season on a season page |
 | `f` | Toggle the favorite-game filter on the dashboard |
 | `c` | Choose a favorite team and preview a theme; `Enter` saves, `Esc` cancels |
@@ -110,9 +113,11 @@ td -season 2026 -week 1 -type 3  # Open a postseason week
 td -compact                      # Use the compact layout
 td -notify                       # Alert for favorite-team scores and finals
 td -notify-all                   # Alert for all scores and finals
+td -follow KC,DET                # Follow other teams; -follow "" clears them
 td -status                       # Print one line for a shell prompt (see below)
-td -status -live                 # Same, but only while the game is in progress
+td -status -live                 # Same, but only while a game is in progress
 td -status -watch                # Redraw a scoreboard ticker every 30 seconds
+td -status -watch -notify        # Same, with desktop alerts from the background
 td -status -split                # Open the ticker in a new multiplexer pane
 ```
 
@@ -132,7 +137,11 @@ GB @ DET · Sun 1:00 PM
 
 The score always reads favorite first. `BALL` means your team has possession and `RZ` that it is in the red zone. On a bye week the line is empty, so prompt segments disappear. It never waits on the network: it prints from the local cache and, when that is older than 30 seconds, starts a short background refresh so the next prompt is current. The first run after install prints nothing until that refresh lands. Data older than five minutes is marked `(cached)`.
 
-`td -status -live` prints the line only while the game is in progress, so a prompt segment appears during games and disappears otherwise.
+`td -status -live` prints the line only while a game is in progress, so a prompt segment appears during games and disappears otherwise.
+
+Followed teams join the line after your favorite, separated by ` | `. They are also pinned to the top of the ticker, included in score alerts, and shown by the favorite filter. Press Space in settings to follow or unfollow the highlighted team. That saves at once, so Esc does not undo it.
+
+`-notify` and `-notify-all` work with `-status -watch` and `-status -split`, so a ticker pane can send alerts without the full app open. Alerts use `notify-send`, which means Linux only.
 
 For [Starship](https://starship.rs), add to `~/.config/starship.toml`:
 
@@ -178,9 +187,9 @@ description = "NFL ticker"
 
 Scores refresh every 30 seconds while Touchdown is open. Each new score triggers one request for that game's summary to fetch the scoring play for the feed. The favorite-team schedule loads in the background and refreshes every five minutes. Season leader totals are calculated from completed game box scores when you open the season page; they may be partial if a game summary is unavailable.
 
-Rosters, injury reports, and player stats load the first time their tab or card opens and stay for the session; `r` refetches them. Injury reports describe today, so the game center shows one only for games within two weeks of now.
+Rosters, injury reports, and player stats load the first time their tab or card opens and stay for the session; `r` refetches them. The favorite's injury report also loads at startup and refreshes every five minutes. ESPN's injury feed holds only each team's 25 newest updates, so every report also reads the team's roster, which lists every status. Injury reports describe today, so the game center shows one only for games within two weeks of now.
 
-Touchdown uses ESPN's publicly accessible, undocumented NFL scoreboard, summary, schedule, standings, injuries, roster, and athlete overview endpoints. Those endpoints can change or become unavailable. Data can lag live action, and stats or play-by-play may be absent before kickoff or while a game is being updated. Kickoff times use your terminal's local timezone.
+Touchdown uses ESPN's publicly accessible, undocumented NFL scoreboard, summary, schedule, standings, leaders, injuries, roster, and athlete overview endpoints. Those endpoints can change or become unavailable. Data can lag live action, and stats or play-by-play may be absent before kickoff or while a game is being updated. Kickoff times use your terminal's local timezone.
 
 Successful responses are saved in your user cache directory, usually `~/.cache/touchdown`. If a request fails, Touchdown can display the last saved response and mark cached scores as `CACHED`. Cached data may be old; use `r` to retry when you are back online.
 

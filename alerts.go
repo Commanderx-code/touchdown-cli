@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"os/exec"
+	"slices"
 	"time"
 
 	tea "github.com/charmbracelet/bubbletea"
@@ -12,11 +13,11 @@ import (
 type scoreAlert struct{ title, body string }
 
 // scoreAlerts turns scoring events into desktop alerts for the favorite
-// team's game, or for every game when all is set.
-func scoreAlerts(previous, current scoreboard, favorite string, all bool) []scoreAlert {
+// and followed teams' games, or for every game when all is set.
+func scoreAlerts(previous, current scoreboard, favorite string, all bool, followed ...string) []scoreAlert {
 	var alerts []scoreAlert
 	for _, e := range scoringEvents(previous, current, favorite) {
-		if !all && !e.Favorite {
+		if !all && !e.Favorite && !slices.Contains(followed, e.Away) && !slices.Contains(followed, e.Home) {
 			continue
 		}
 		status := "Score update"
@@ -29,9 +30,11 @@ func scoreAlerts(previous, current scoreboard, favorite string, all bool) []scor
 }
 
 func sendAlert(alert scoreAlert) tea.Cmd {
-	return func() tea.Msg {
-		ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
-		defer cancel()
-		return alertMsg{err: exec.CommandContext(ctx, "notify-send", "--app-name=Touchdown", alert.title, alert.body).Run()}
-	}
+	return func() tea.Msg { return alertMsg{err: deliverAlert(alert)} }
+}
+
+func deliverAlert(alert scoreAlert) error {
+	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+	defer cancel()
+	return exec.CommandContext(ctx, "notify-send", "--app-name=Touchdown", alert.title, alert.body).Run()
 }

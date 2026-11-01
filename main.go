@@ -5,6 +5,7 @@ import (
 	"flag"
 	"fmt"
 	"os"
+	"slices"
 	"strconv"
 	"time"
 
@@ -104,6 +105,7 @@ type model struct {
 	updated                  time.Time
 	width, height            int
 	notify, notifyAll        bool
+	followed                 []string
 	compact                  bool
 	feed                     []scoringEvent
 	feedPending              map[string]int
@@ -111,6 +113,18 @@ type model struct {
 	view                     teamPage
 	showPicker               bool
 	showOverview             bool
+	showPlayoffs             bool
+	playoffTab               int
+	playoffConference        int
+	playoffScroll            int
+	playoffSeason            int
+	playoffRoundData         map[int]playoffRound
+	showLeaders              bool
+	leaderData               leagueLeaders
+	leadersLoading           bool
+	leadersError             string
+	leaderSelected           int
+	leaderScroll             int
 	overview                 map[int]overviewWeek
 	overviewCursor           int
 	overviewScroll           int
@@ -169,14 +183,45 @@ func (m model) teamScheduleDue() bool {
 	return m.teamUpdated.IsZero() || time.Since(m.teamUpdated) > 5*time.Minute
 }
 
+// watching reports whether the game involves the favorite or a followed team.
+func (m model) watching(g game) bool {
+	away, home := g.sides()
+	for _, side := range []string{away.Team.Abbreviation, home.Team.Abbreviation} {
+		if side == m.favorite || slices.Contains(m.followed, side) {
+			return true
+		}
+	}
+	return false
+}
+
+// tickLoads is the refresh each tick starts, chosen by the screen on show.
+func (m model) tickLoads() (model, tea.Cmd) {
+	if (m.showHome || m.showTeam || !m.showDetail && !m.showStandings) && m.teamScheduleDue() {
+		m.teamLoading = true
+		next, injuries := m.requestInjuries(m.favorite, true)
+		return next, tea.Batch(next.loadBoard(), next.loadTeam(), tick(), injuries)
+	}
+	if m.showStandings {
+		if !m.standingsLoading {
+			m.standingsLoading = true
+			return m, tea.Batch(m.loadStandings(), tick())
+		}
+		return m, tick()
+	}
+	if m.season > 0 && !m.standingsLoading && (m.standingsSeason != m.season || time.Since(m.standingsUpdated) > 5*time.Minute) {
+		m.standingsLoading = true
+		return m, tea.Batch(m.loadBoard(), m.loadStandings(), tick())
+	}
+	return m, tea.Batch(m.loadBoard(), tick())
+}
+
 func (m model) visibleGames() []game {
 	if !m.favoritesOnly && !m.liveOnly {
 		return m.board.Events
 	}
 	var games []game
 	for _, g := range m.board.Events {
-		away, home := g.sides()
-		if (m.liveOnly && g.Status.Type.State == "in") || (m.favoritesOnly && m.favorite != "" && (away.Team.Abbreviation == m.favorite || home.Team.Abbreviation == m.favorite)) {
+		if (m.liveOnly && g.Status.Type.State == "in") || (m.favoritesOnly && m.favorite != "" && m.watching(g)) {
 			games = append(games, g)
 		}
 	}
@@ -334,6 +379,12 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.injuryScroll = min(m.injuryScroll, m.maxScrollForTab(tabInjuries))
 		m.playerScroll = min(m.playerScroll, m.maxPlayerScroll())
 		m.detailScroll = min(m.detailScroll, m.maxDetailScroll())
+		m.playoffScroll = min(m.playoffScroll, m.maxPlayoffScroll())
+		m.leaderScroll = min(m.leaderScroll, m.maxLeaderScroll())
+	case playoffRoundMsg:
+		return m.applyPlayoffRound(msg), nil
+	case leadersMsg:
+		return m.applyLeaders(msg), nil
 	case overviewMsg:
 		return m.applyOverview(msg), nil
 	case injuriesMsg:
@@ -356,7 +407,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		var feedCmds []tea.Cmd
 		if msg.board.CachedAt.IsZero() && m.board.CachedAt.IsZero() && len(m.board.Events) > 0 {
 			if m.notify {
-				alerts = scoreAlerts(m.board, msg.board, m.favorite, m.notifyAll)
+				alerts = scoreAlerts(m.board, msg.board, m.favorite, m.notifyAll, m.followed...)
 			}
 			m, feedCmds = m.recordScoring(scoringEvents(m.board, msg.board, m.favorite))
 		}
@@ -382,6 +433,12 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.week = msg.board.Week.Number
 			if m.showOverview {
 				return m.seasonKnown()
+			}
+			if m.showPlayoffs {
+				return m.playoffLoads(false)
+			}
+			if m.showLeaders {
+				return m.requestLeaders(false)
 			}
 		}
 		if m.selected >= len(m.visibleGames()) {
@@ -528,6 +585,24 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if m.showHelp {
 			break
 		}
+		if m.showPlayoffs && !m.showPlayer {
+			switch msg.Button {
+			case tea.MouseButtonWheelUp:
+				return m.updatePlayoffsKey("up")
+			case tea.MouseButtonWheelDown:
+				return m.updatePlayoffsKey("down")
+			}
+			break
+		}
+		if m.showLeaders && !m.showPlayer {
+			switch msg.Button {
+			case tea.MouseButtonWheelUp:
+				return m.updateLeadersKey("up")
+			case tea.MouseButtonWheelDown:
+				return m.updateLeadersKey("down")
+			}
+			break
+		}
 		if m.showOverview {
 			switch msg.Button {
 			case tea.MouseButtonWheelUp:
@@ -553,23 +628,12 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m = m.scrollBy(3)
 		}
 	case tickMsg:
-		if (m.showHome || m.showTeam || !m.showDetail && !m.showStandings) && m.teamScheduleDue() {
-			m.teamLoading = true
-			next, injuries := m.requestInjuries(m.favorite, true)
-			return next, tea.Batch(next.loadBoard(), next.loadTeam(), tick(), injuries)
+		var rounds tea.Cmd
+		if m.showPlayoffs && m.playoffTab == playoffBracket && m.seasonType == 3 {
+			m, rounds = m.requestPlayoffRounds(true)
 		}
-		if m.showStandings {
-			if !m.standingsLoading {
-				m.standingsLoading = true
-				return m, tea.Batch(m.loadStandings(), tick())
-			}
-			return m, tick()
-		}
-		if m.season > 0 && !m.standingsLoading && (m.standingsSeason != m.season || time.Since(m.standingsUpdated) > 5*time.Minute) {
-			m.standingsLoading = true
-			return m, tea.Batch(m.loadBoard(), m.loadStandings(), tick())
-		}
-		return m, tea.Batch(m.loadBoard(), tick())
+		next, cmd := m.tickLoads()
+		return next, tea.Batch(cmd, rounds)
 	case tea.KeyMsg:
 		key := msg.String()
 		if m.showHelp {
@@ -605,6 +669,23 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				return m, tea.Quit
 			}
 			return m.updatePlayerKey(key)
+		}
+		if m.showPlayoffs || m.showLeaders {
+			if key == "q" || key == "ctrl+c" {
+				return m, tea.Quit
+			}
+			if m.showPlayoffs {
+				return m.updatePlayoffsKey(key)
+			}
+			return m.updateLeadersKey(key)
+		}
+		if key == "P" && !m.showDetail && !m.showStandings && !m.showTeam {
+			m.pendingFavoriteGame = false
+			return m.openPlayoffs()
+		}
+		if key == "L" && !m.showDetail && !m.showStandings && !m.showTeam {
+			m.pendingFavoriteGame = false
+			return m.openLeaders()
 		}
 		if key == "t" && m.showTeam && !m.showDetail {
 			return m.jumpToOpponent()
@@ -892,6 +973,12 @@ func (m model) openHomeSelection() (model, tea.Cmd) {
 	case 7:
 		m.showHome = true
 		return m.openOverview()
+	case 8:
+		m.showHome = true
+		return m.openPlayoffs()
+	case 9:
+		m.showHome = true
+		return m.openLeaders()
 	case 4, 5:
 		m.standingsFromHome = true
 		m.showStandings = true
@@ -908,6 +995,9 @@ func (m model) openHomeSelection() (model, tea.Cmd) {
 	}
 	return m, nil
 }
+
+// version is set when a release is built.
+var version = "dev"
 
 func main() {
 	defaultPath, err := defaultConfigPath()
@@ -931,8 +1021,14 @@ func main() {
 	watch := flag.Bool("watch", false, "with -status, redraw a scoreboard ticker every 30 seconds")
 	split := flag.Bool("split", false, "with -status, open the ticker in a new multiplexer pane")
 	refresh := flag.Bool("refresh", false, "refresh the status cache and exit (used by -status)")
-	live := flag.Bool("live", false, "with -status, print the line only while the favorite's game is in progress")
+	live := flag.Bool("live", false, "with -status, print the line only while the favorite's or a followed game is in progress")
+	showVersion := flag.Bool("version", false, "print the version and exit")
+	follow := flag.String("follow", "", `save followed teams as a comma-separated list (e.g. KC,DET) and exit; "" clears them`)
 	flag.Parse()
+	if *showVersion {
+		fmt.Println("touchdown", version)
+		return
+	}
 	if *setFavorite != "" {
 		team, err := saveFavorite(*configPath, *setFavorite)
 		if err != nil {
@@ -956,8 +1052,23 @@ func main() {
 		fmt.Fprintln(os.Stderr, err)
 		os.Exit(2)
 	}
+	if flagWasSet(flag.CommandLine, "follow") {
+		teams, err := parseFollowed(*follow, config.FavoriteTeam)
+		if err == nil {
+			err = saveFollowed(*configPath, teams)
+		}
+		if err != nil {
+			fmt.Fprintln(os.Stderr, err)
+			os.Exit(2)
+		}
+		fmt.Printf("Followed teams: %s\nConfig: %s\n", followedLabel(teams), *configPath)
+		if note := followNote(*follow, config.FavoriteTeam); note != "" {
+			fmt.Println(note)
+		}
+		return
+	}
 	if *showConfig {
-		fmt.Printf("Config: %s\nFavorite team: %s %s (%s)\nTheme: %s\nGame key: g\nSeason key: p\n", *configPath, team.city, team.nickname, team.abbreviation, config.Theme)
+		fmt.Printf("Config: %s\nFavorite team: %s %s (%s)\nFollowed teams: %s\nTheme: %s\nGame key: g\nSeason key: p\n", *configPath, team.city, team.nickname, team.abbreviation, followedLabel(config.FollowedTeams), config.Theme)
 		return
 	}
 	chosenTheme := config.Theme
@@ -992,7 +1103,7 @@ func main() {
 		}
 		if *watch && !*split {
 			ctx, stop := watchContext()
-			code := runWatch(ctx, api, team.abbreviation, *season, *week, *seasonType, os.Stdout, 30*time.Second)
+			code := runWatch(ctx, api, team.abbreviation, *season, *week, *seasonType, os.Stdout, 30*time.Second, watchOptions{followed: config.FollowedTeams, notify: *notify || *notifyAll, notifyAll: *notifyAll})
 			stop()
 			os.Exit(code)
 		}
@@ -1004,7 +1115,7 @@ func main() {
 		if *split {
 			os.Exit(openSplit(detectHost(os.Getenv), self, forwardedFlags(flag.CommandLine), os.Stderr))
 		}
-		os.Exit(runStatusOnce(api.cacheDir, team.abbreviation, *season, *week, *seasonType, time.Now(), self, forwardedFlags(flag.CommandLine), os.Stdout, *live))
+		os.Exit(runStatusOnce(api.cacheDir, team.abbreviation, *season, *week, *seasonType, time.Now(), self, forwardedFlags(flag.CommandLine), os.Stdout, *live, config.FollowedTeams...))
 	}
 	if *once {
 		board, err := api.scoreboard(context.Background(), *season, *week, *seasonType)
@@ -1025,7 +1136,7 @@ func main() {
 		}
 		return
 	}
-	m := model{api: api, season: *season, week: *week, seasonType: *seasonType, loading: true, favorite: team.abbreviation, showHome: true, compact: *compact, notify: *notify || *notifyAll, notifyAll: *notifyAll, theme: chosenTheme, configPath: *configPath}
+	m := model{api: api, season: *season, week: *week, seasonType: *seasonType, loading: true, favorite: team.abbreviation, showHome: true, compact: *compact, notify: *notify || *notifyAll, notifyAll: *notifyAll, theme: chosenTheme, configPath: *configPath, followed: config.FollowedTeams}.markStartupLoads()
 	if _, err := tea.NewProgram(m, tea.WithAltScreen(), tea.WithMouseCellMotion()).Run(); err != nil {
 		fmt.Fprintln(os.Stderr, err)
 		os.Exit(1)

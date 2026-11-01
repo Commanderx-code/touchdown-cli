@@ -113,6 +113,9 @@ func (m model) gameInjuryLines(g game) []string {
 			lines = append(lines, liveStyle.Render("Injuries: "+entry.Error))
 			continue
 		}
+		if notice := staleLine(entry.Report.CachedAt, entry.Error); notice != "" {
+			lines = append(lines, liveStyle.Render(clipText(notice, m.centerWrapWidth())))
+		}
 		rows := entry.Report.gameDay()
 		if len(rows) == 0 {
 			lines = append(lines, dimStyle.Render("No Out, Doubtful or Questionable players."))

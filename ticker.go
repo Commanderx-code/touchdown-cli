@@ -15,20 +15,26 @@ import (
 const clearScreen = "\033[H\033[2J"
 
 // tickerLines renders the scoreboard for a narrow pane: a header, the
-// favorite team's game, then live, upcoming and finished games.
-func tickerLines(board scoreboard, favorite string, now time.Time, width int, cached bool) []string {
+// favorite's and followed teams' games, then live, upcoming and finished games.
+func tickerLines(board scoreboard, favorite string, now time.Time, width int, cached bool, followed ...string) []string {
 	header := fmt.Sprintf("Week %d · updated %s", board.Week.Number, now.Format("15:04:05"))
 	if cached {
 		header += " · cached"
 	}
 	lines := []string{clipText(header, width), ""}
-	fav, hasFav := favoriteGame(board, favorite)
-	if hasFav {
-		lines = append(lines, clipText(tickerLine(fav, now), width), "")
+	pinned := map[string]bool{}
+	for _, team := range append([]string{favorite}, followed...) {
+		if g, ok := favoriteGame(board, team); ok && !pinned[g.ID] {
+			pinned[g.ID] = true
+			lines = append(lines, clipText(tickerLine(g, now), width))
+		}
+	}
+	if len(pinned) > 0 {
+		lines = append(lines, "")
 	}
 	for _, state := range []string{"in", "pre", "post"} {
 		for _, g := range board.Events {
-			if hasFav && g.ID == fav.ID {
+			if pinned[g.ID] {
 				continue
 			}
 			if g.Status.Type.State != state {
@@ -91,9 +97,36 @@ func terminalWidth(fallback int) int {
 	return fallback
 }
 
+// watchOptions are the ticker's followed teams and desktop alerts.
+type watchOptions struct {
+	followed          []string
+	notify, notifyAll bool
+	send              func(scoreAlert) error
+}
+
+// deliver wraps send so that a broken alert command, such as a missing
+// notify-send, is reported once instead of on every score.
+func (o watchOptions) deliver(errOut io.Writer) func(scoreAlert) {
+	reported := false
+	return func(alert scoreAlert) {
+		if err := o.send(alert); err != nil && !reported {
+			reported = true
+			fmt.Fprintln(errOut, "alert failed:", err)
+		}
+	}
+}
+
 // runWatch redraws the ticker every interval until ctx is cancelled. A
 // failed fetch leaves the last good screen in place.
-func runWatch(ctx context.Context, api *client, favorite string, season, week, seasonType int, out io.Writer, interval time.Duration) int {
+func runWatch(ctx context.Context, api *client, favorite string, season, week, seasonType int, out io.Writer, interval time.Duration, options watchOptions) int {
+	var previous scoreboard
+	alert := func(scoreAlert) {}
+	if options.notify {
+		if options.send == nil {
+			options.send = deliverAlert
+		}
+		alert = options.deliver(os.Stderr)
+	}
 	for {
 		fetchCtx, cancel := context.WithTimeout(ctx, refreshTimeout)
 		board, err := api.scoreboard(fetchCtx, season, week, seasonType)
@@ -103,8 +136,12 @@ func runWatch(ctx context.Context, api *client, favorite string, season, week, s
 				fmt.Fprintln(os.Stderr, "fetch failed:", err)
 			}
 		} else {
-			lines := tickerLines(board, favorite, time.Now(), terminalWidth(60), !board.CachedAt.IsZero())
+			lines := tickerLines(board, favorite, time.Now(), terminalWidth(60), !board.CachedAt.IsZero(), options.followed...)
 			fmt.Fprint(out, clearScreen+strings.Join(lines, "\n")+"\n")
+			for _, a := range scoreAlerts(previous, board, favorite, options.notifyAll, options.followed...) {
+				alert(a)
+			}
+			previous = board
 		}
 		select {
 		case <-ctx.Done():
