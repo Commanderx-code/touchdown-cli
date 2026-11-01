@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"time"
 
 	tea "github.com/charmbracelet/bubbletea"
 )
@@ -113,7 +114,7 @@ func (m model) requestPlayer(id string, force bool) (model, tea.Cmd) {
 
 func (m model) loadInjuries(team string) tea.Cmd {
 	return func() tea.Msg {
-		report, err := m.api.injuries(context.Background(), team)
+		report, err := m.api.fullInjuries(context.Background(), team)
 		return injuriesMsg{team: team, report: report, err: err}
 	}
 }
@@ -175,4 +176,28 @@ func (m model) applyPlayer(msg playerMsg) model {
 	}
 	m.players[msg.id] = entry
 	return m
+}
+
+// markStartupLoads records the fetches Init starts, so nothing requests them
+// a second time before their replies arrive.
+func (m model) markStartupLoads() model {
+	if m.favorite != "" {
+		m.injuryReports = map[string]injuryEntry{m.favorite: {Loading: true}}
+	}
+	return m
+}
+
+// staleLine says when data on screen is not current: an update failed, or it
+// came from the disk cache. It is empty for fresh data.
+func staleLine(cachedAt time.Time, failed string) string {
+	saved := "last saved " + cachedAt.Local().Format("Jan 2, 3:04 PM")
+	switch {
+	case failed != "" && !cachedAt.IsZero():
+		return "UPDATE FAILED · " + saved
+	case failed != "":
+		return "UPDATE FAILED · showing the last data loaded"
+	case !cachedAt.IsZero():
+		return "CACHED · " + saved
+	}
+	return ""
 }

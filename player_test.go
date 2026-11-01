@@ -272,7 +272,7 @@ func TestSeasonPageTabsLoadLazilyAndRender(t *testing.T) {
 	}
 	m = press(t, m, "3")
 	view = m.View()
-	for _, want := range []string{"[ 3 INJURIES ]", "INJURY REPORT  ·  1 OUT · 1 Q · 1 IR", "OUT   DE   Micah Parsons", "Knee - ACL", "back Nov 25", "Targeting Week 12."} {
+	for _, want := range []string{"[ 3 INJURIES ]", "INJURY REPORT  ·  1 OUT · 2 Q · 2 IR", "OUT   DE   Micah Parsons", "Knee - ACL", "back Nov 25", "Targeting Week 12."} {
 		if !strings.Contains(view, want) {
 			t.Fatalf("injury view missing %q:\n%s", want, view)
 		}
@@ -304,8 +304,8 @@ func TestSeasonPageTabSelectionAndRefresh(t *testing.T) {
 	m = press(t, m, "3")
 	seen = nil
 	m = press(t, m, "r")
-	if len(seen) != 1 || !strings.Contains(seen[0], "/injuries") {
-		t.Fatalf("r on the injuries tab must refetch injuries only: %v", seen)
+	if len(seen) != 2 || len(injuryRequests(seen)) != 1 {
+		t.Fatalf("r on the injuries tab must refetch one report and its roster: %v", seen)
 	}
 	m, _ = m.openTeamSeason("DET")
 	if m.teamTab != 0 || m.rosterSelected != 0 || m.injurySelected != 0 {
@@ -377,7 +377,7 @@ func TestEnterOnInjuryRowShowsInjuryLine(t *testing.T) {
 		}
 	}
 	m = press(t, m, "esc")
-	m.injurySelected = 2 // No Link, no athlete ID
+	m.injurySelected = 3 // No Link, no athlete ID
 	m = press(t, m, "enter")
 	if m.showPlayer {
 		t.Fatal("a row without an athlete ID must not open a card")

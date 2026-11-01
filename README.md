@@ -11,7 +11,7 @@ Follow every game, keep your favorite team in focus, and open a game for box sco
 - **Scores dashboard:** Live, final, and upcoming games grouped under kickoff-slot headers, with a favorite-team card and a conference standings snapshot on wide terminals. Live rows show possession, down and distance, and red zone.
 - **Scoring feed:** Every score across live games appears on the dashboard with the play that produced it.
 - **Team season pages:** Any team's season schedule, record, and passing, rushing, and receiving leaders. Your favorite's page adds the next matchup and kickoff, latest result, and bye week. Press `t` on any matchup to jump to the opponent's page and Esc to walk back.
-- **Rosters and injury reports:** Every season page has roster and injury tabs. The injury report shows status, body part, expected return, and the latest note; the game center lists both teams' Out, Doubtful, and Questionable players, and the favorite's card counts them.
+- **Rosters and injury reports:** Every season page has roster and injury tabs. The injury report shows status, body part, expected return, and the latest note; the game center lists both teams' Out, Doubtful, and Questionable players, and the favorite's spotlight panel counts them. Players on injured reserve and anyone else ESPN's feed has dropped come from the roster, without a body part or note.
 - **Player cards:** Enter on any roster or injury row opens the player's bio, injury status, and this season's stat lines.
 - **Season overview:** Weeks 1 to 18 at a glance with the game count, your favorite's matchup or result, and the teams on bye. Enter opens that week on the dashboard.
 - **Game center:** Team and player stats, play-by-play, quarter scores, scoring plays, and a drive timeline. Live games show possession, down and distance, timeouts remaining, and the latest play when available.
@@ -178,7 +178,7 @@ description = "NFL ticker"
 
 Scores refresh every 30 seconds while Touchdown is open. Each new score triggers one request for that game's summary to fetch the scoring play for the feed. The favorite-team schedule loads in the background and refreshes every five minutes. Season leader totals are calculated from completed game box scores when you open the season page; they may be partial if a game summary is unavailable.
 
-Rosters, injury reports, and player stats load the first time their tab or card opens and stay for the session; `r` refetches them. Injury reports describe today, so the game center shows one only for games within two weeks of now.
+Rosters, injury reports, and player stats load the first time their tab or card opens and stay for the session; `r` refetches them. The favorite's injury report also loads at startup and refreshes every five minutes. ESPN's injury feed holds only each team's 25 newest updates, so every report also reads the team's roster, which lists every status. Injury reports describe today, so the game center shows one only for games within two weeks of now.
 
 Touchdown uses ESPN's publicly accessible, undocumented NFL scoreboard, summary, schedule, standings, injuries, roster, and athlete overview endpoints. Those endpoints can change or become unavailable. Data can lag live action, and stats or play-by-play may be absent before kickoff or while a game is being updated. Kickoff times use your terminal's local timezone.
 

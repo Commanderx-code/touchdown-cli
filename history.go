@@ -74,7 +74,7 @@ func (m model) consumeOverview() model {
 // on the current season page, remembering the current page for Esc.
 func (m model) jumpToOpponent() (model, tea.Cmd) {
 	page := m.activeTeamPage()
-	if page.Season != m.season || len(page.Data.Events) == 0 {
+	if m.teamTab != tabSchedule || page.Season != m.season || len(page.Data.Events) == 0 {
 		return m, nil
 	}
 	event := page.Data.Events[max(0, min(m.teamSelected, len(page.Data.Events)-1))]

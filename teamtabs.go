@@ -5,6 +5,7 @@ import (
 	"strings"
 
 	tea "github.com/charmbracelet/bubbletea"
+	"github.com/charmbracelet/lipgloss"
 )
 
 // The season page has three tabs: schedule (the original page), roster and
@@ -127,9 +128,12 @@ func (m model) rosterRender() ([]string, []int) {
 	case entry.Error != "" && entry.Data.Team == "":
 		return []string{liveStyle.Render("Roster: " + entry.Error)}, nil
 	}
-	var lines []string
-	var rowLines []int
 	width := m.teamRowWidth()
+	var lines []string
+	if notice := staleLine(entry.Data.CachedAt, entry.Error); notice != "" {
+		lines = append(lines, liveStyle.Render(clipText(notice, width)))
+	}
+	var rowLines []int
 	index := 0
 	for _, group := range entry.Data.Groups {
 		if len(lines) > 0 {
@@ -214,11 +218,15 @@ func (m model) injuryRender() ([]string, []int) {
 	if summary := entry.Report.summary(); summary != "" {
 		header += "  ·  " + summary
 	}
-	lines := []string{sectionStyle.Render(header)}
+	width := m.teamRowWidth()
+	var lines []string
+	if notice := staleLine(entry.Report.CachedAt, entry.Error); notice != "" {
+		lines = append(lines, liveStyle.Render(clipText(notice, width)))
+	}
+	lines = append(lines, sectionStyle.Render(header))
 	if len(entry.Report.Entries) == 0 {
 		return append(lines, dimStyle.Render("No injuries reported.")), nil
 	}
-	width := m.teamRowWidth()
 	var rowLines []int
 	for i, row := range entry.Report.Entries {
 		text := clipText(injuryRow(row), width)
@@ -247,6 +255,25 @@ func (m model) injurySelectedLine() int {
 		return 0
 	}
 	return rowLines[max(0, min(m.injurySelected, len(rowLines)-1))]
+}
+
+// seasonFooter is the widest key hint that fits. Only the schedule tab has an
+// opponent to jump to.
+func (m model) seasonFooter(width int) string {
+	t, tShort := "  ·  t opponent", " · t"
+	if m.teamTab != tabSchedule {
+		t, tShort = "", ""
+	}
+	candidates := []string{
+		"1/2/3 tabs  ·  ↑/↓ select  ·  Enter open" + t + "  ·  Esc back  ·  r refresh  ·  q quit",
+		"1/2/3 tabs · ↑/↓ · Enter open" + strings.ReplaceAll(t, "  ·  ", " · ") + " · Esc · r refresh · q quit",
+	}
+	for _, footer := range candidates {
+		if lipgloss.Width(footer) <= width {
+			return footer
+		}
+	}
+	return "1/2/3 · ↑/↓ · Enter" + tShort + " · Esc · q"
 }
 
 // maxScrollForTab is maxTeamScroll as if tab were active.
