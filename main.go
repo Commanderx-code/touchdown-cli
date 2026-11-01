@@ -819,6 +819,10 @@ func main() {
 		fmt.Fprintln(os.Stderr, "use -season and -week together; -type must be 1–3 and week must fit the season type")
 		os.Exit(2)
 	}
+	if err := validateStatusFlags(*status, *watch, *split, *refresh, *once, *notify || *notifyAll, *compact); err != nil {
+		fmt.Fprintln(os.Stderr, err)
+		os.Exit(2)
+	}
 	api := newClient()
 	if *status {
 		api.http.Timeout = refreshTimeout

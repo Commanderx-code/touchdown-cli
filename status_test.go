@@ -392,3 +392,29 @@ func TestOpenSplitFailures(t *testing.T) {
 		t.Fatalf("tmux failure: code %d out %q", code, errOut.String())
 	}
 }
+
+func TestValidateStatusFlags(t *testing.T) {
+	cases := []struct {
+		status, watch, split, refresh, once, notify, compact bool
+		wantErr                                              bool
+	}{
+		{true, false, false, false, false, false, false, false},
+		{true, true, false, false, false, false, false, false},
+		{true, true, true, false, false, false, false, false},
+		{true, false, false, true, false, false, false, false},
+		{false, true, false, false, false, false, false, true},
+		{false, false, true, false, false, false, false, true},
+		{false, false, false, true, false, false, false, true},
+		{true, false, false, false, true, false, false, true},
+		{true, false, false, false, false, true, false, true},
+		{true, false, false, false, false, false, true, true},
+		{false, false, false, false, true, false, false, false},
+		{false, false, false, false, false, true, true, false},
+	}
+	for i, tc := range cases {
+		err := validateStatusFlags(tc.status, tc.watch, tc.split, tc.refresh, tc.once, tc.notify, tc.compact)
+		if (err != nil) != tc.wantErr {
+			t.Errorf("case %d %+v: err %v", i, tc, err)
+		}
+	}
+}
