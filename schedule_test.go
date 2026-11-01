@@ -477,3 +477,158 @@ func TestFootersAndHelpMentionTeamsKey(t *testing.T) {
 		t.Fatal("help must list t  team schedules")
 	}
 }
+
+// Fix-pass tests from the whole-branch review.
+
+func TestOverviewSurvivesSeasonArrivingWhileOpen(t *testing.T) {
+	var seen []string
+	m := model{api: scheduleClient(t, &seen), favorite: "GB", showHome: true, homeSelection: 7, width: 80, height: 24}
+	next, _ := m.Update(tea.KeyMsg{Type: tea.KeyEnter})
+	m = next.(model)
+	var board scoreboard
+	if err := json.Unmarshal([]byte(`{"leagues":[{"season":{"year":2026,"type":{"id":"2"}}}],"week":{"number":9},"events":[{"id":"1","date":"2026-11-01T18:00Z","status":{"type":{"state":"pre"}},"competitions":[{"competitors":[{"homeAway":"away","team":{"abbreviation":"CAR"}},{"homeAway":"home","team":{"abbreviation":"GB"}}]}]}]}`), &board); err != nil {
+		t.Fatal(err)
+	}
+	next, cmd := m.Update(boardMsg{board: board})
+	m = next.(model)
+	runCmds(cmd)
+	if m.season != 2026 || m.overviewCursor != 9 || len(scoreboardWeeks(seen)) == 0 {
+		t.Fatalf("season arrival must set up the overview: season %d cursor %d requests %v", m.season, m.overviewCursor, scoreboardWeeks(seen))
+	}
+	next, _ = m.Update(tea.KeyMsg{Type: tea.KeyDown})
+	m = next.(model)
+	next, _ = m.Update(tea.MouseMsg{Button: tea.MouseButtonWheelDown})
+	m = next.(model)
+	next, _ = m.Update(tea.KeyMsg{Type: tea.KeyEnter})
+	m = next.(model)
+	if m.week != 13 || m.showOverview {
+		t.Fatalf("enter after moves: week %d showOverview %v", m.week, m.showOverview)
+	}
+}
+
+func TestOpponentJumpIgnoresMissingCompetitors(t *testing.T) {
+	m := favoriteSeasonModel(t)
+	m.showTeam = true
+	m.teamData.Events = append([]scheduledGame{{ID: "bye"}}, m.teamData.Events...)
+	m.teamSelected = 0
+	m = key(m, "t")
+	if m.viewTeam != "" || !m.showTeam {
+		t.Fatalf("t on a row without competitors must be a no-op: viewTeam %q", m.viewTeam)
+	}
+}
+
+func TestRefreshOnViewedTeamReloadsThatTeam(t *testing.T) {
+	m := favoriteSeasonModel(t)
+	m, _ = m.openTeamSeason("DET")
+	m, _ = m.applyViewSchedule(teamScheduleMsg{team: "DET", data: decodeSchedule(t, "DET")})
+	next, cmd := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("r")})
+	m = next.(model)
+	msgs := runCmds(cmd)
+	found := false
+	for _, msg := range msgs {
+		if sched, ok := msg.(teamScheduleMsg); ok && sched.team == "DET" {
+			found = true
+		}
+		if sched, ok := msg.(teamScheduleMsg); ok && sched.team == "GB" {
+			t.Fatal("r on DET's page must not refetch the favorite")
+		}
+	}
+	if !found || !m.view.Loading {
+		t.Fatalf("r must reload DET: found %v loading %v", found, m.view.Loading)
+	}
+}
+
+func TestEscAfterOpponentRoundTripReturnsHome(t *testing.T) {
+	m := favoriteSeasonModel(t)
+	m.showHome, m.homeSelection = true, 3
+	m = key(m, "enter")
+	m.teamSelected = 0
+	m = key(m, "t")
+	m = key(m, "esc")
+	m = key(m, "esc")
+	if !m.showHome || m.showTeam {
+		t.Fatalf("home → season → opponent → esc → esc must land home: home %v team %v", m.showHome, m.showTeam)
+	}
+}
+
+func TestHomeFavoriteSeasonClearsViewedTeam(t *testing.T) {
+	m := favoriteSeasonModel(t)
+	m, _ = m.openTeamSeason("DET")
+	m.showTeam, m.showHome, m.homeSelection = false, true, 3
+	m = key(m, "enter")
+	if !m.showTeam || !m.showingFavorite() {
+		t.Fatalf("favorite season item must show the favorite: viewTeam %q", m.viewTeam)
+	}
+}
+
+func TestPickerBeforeSeasonKnownOnlyAcceptsEsc(t *testing.T) {
+	m := model{api: scheduleClient(t, nil), favorite: "GB", width: 80, height: 24}
+	m = key(m, "t")
+	if !m.showPicker || !strings.Contains(m.View(), "Loading season…") {
+		t.Fatal("picker before the season is known must show Loading season…")
+	}
+	m = key(m, "enter")
+	if !m.showPicker || m.showTeam {
+		t.Fatal("enter must be ignored before the season is known")
+	}
+	m = key(m, "esc")
+	if m.showPicker {
+		t.Fatal("esc must leave the picker")
+	}
+}
+
+func TestOverviewResetsWhenFavoriteChanges(t *testing.T) {
+	m := model{api: scheduleClient(t, nil), season: 2026, week: 9, seasonType: 2, favorite: "GB", showHome: true, homeSelection: 7, width: 100, height: 30}
+	next, _ := m.Update(tea.KeyMsg{Type: tea.KeyEnter})
+	m = next.(model)
+	m = m.applyOverview(overviewMsg{season: 2026, week: 9, board: boardAt(t, "1", "pre", "", "")})
+	if !strings.Contains(m.overview[9].Favorite, "GB") {
+		t.Fatalf("week 9 should mention GB: %+v", m.overview[9])
+	}
+	m = key(m, "esc")
+	m.favorite = "KC"
+	m.homeSelection = 7
+	m = key(m, "enter")
+	if w := m.overview[9]; w.Loaded && strings.Contains(w.Favorite, "GB") {
+		t.Fatalf("overview must drop rows summarized for the old favorite: %+v", w)
+	}
+}
+
+func TestSortByKickoffPutsUnknownTimesLast(t *testing.T) {
+	events := []game{{ID: "tbd"}, {ID: "sun", Date: "2026-11-08T18:00Z"}, {ID: "thu", Date: "2026-11-06T01:15Z"}}
+	sortByKickoff(events)
+	if events[0].ID != "thu" || events[1].ID != "sun" || events[2].ID != "tbd" {
+		t.Fatalf("order: %s %s %s", events[0].ID, events[1].ID, events[2].ID)
+	}
+}
+
+func TestHomeMenuFitsShortTerminals(t *testing.T) {
+	for _, height := range []int{10, 11, 12, 13, 14} {
+		m := model{showHome: true, favorite: "GB", width: 80, height: height}
+		if lines := strings.Count(m.View(), "\n") + 1; lines > height {
+			t.Errorf("home at 80x%d has %d lines", height, lines)
+		}
+	}
+}
+
+func TestFavoriteGameConsumesOverviewEntry(t *testing.T) {
+	var seen []string
+	m := model{api: scheduleClient(t, &seen), season: 2026, week: 9, seasonType: 2, favorite: "GB", showHome: true, homeSelection: 7, width: 100, height: 30, board: boardAt(t, "1", "pre", "", "")}
+	m = key(key(m, "enter"), "enter") // overview → dashboard
+	m = key(m, "g")
+	if !m.showDetail {
+		t.Fatal("g must open the favorite game")
+	}
+	m = key(key(m, "esc"), "esc")
+	if m.showOverview || !m.showHome {
+		t.Fatalf("esc twice after g must reach home, not the overview: overview %v home %v", m.showOverview, m.showHome)
+	}
+}
+
+func TestNarrowDashboardFooterKeepsStandings(t *testing.T) {
+	m := dashboardModel(t)
+	m.width, m.height = 90, 30
+	if view := m.View(); !strings.Contains(view, "s standings") {
+		t.Fatal("narrow dashboard footer must keep s standings")
+	}
+}

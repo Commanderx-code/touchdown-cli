@@ -104,7 +104,7 @@ func (m model) renderHome(width int) string {
 	if m.compact {
 		height = min(height, 15)
 	}
-	if height < 11 {
+	if height < 13 {
 		options := m.homeOptions()
 		return accentStyle.Render("◆ TOUCHDOWN") + "\n" + selectedStyle.Render("› "+options[m.homeSelection]) + "\n" + dimStyle.Render("↑/↓ · Enter · g game · q")
 	}

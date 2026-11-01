@@ -115,6 +115,7 @@ type model struct {
 	overviewCursor           int
 	overviewScroll           int
 	overviewSeason           int
+	overviewFavorite         string
 	history                  []backTarget
 	pickerIndex              int
 	pickerScroll             int
@@ -346,6 +347,9 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.seasonType, _ = strconv.Atoi(msg.board.Leagues[0].Season.Type.ID)
 			}
 			m.week = msg.board.Week.Number
+			if m.showOverview {
+				return m.seasonKnown()
+			}
 		}
 		if m.selected >= len(m.visibleGames()) {
 			m.selected = max(0, len(m.visibleGames())-1)
@@ -609,6 +613,10 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 		case "r":
 			m.loading = true
+			if m.showTeam && !m.showingFavorite() {
+				m.view.Loading = true
+				return m, m.loadTeamFor(m.viewTeam)
+			}
 			if m.showTeam {
 				m.teamLoading = true
 				return m, m.loadTeam()
@@ -737,7 +745,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 					m.pendingFavoriteGame = true
 					return m, nil
 				}
-				return m.openFavoriteGame()
+				return m.consumeOverview().openFavoriteGame()
 			}
 		case "s":
 			if !m.showDetail && !m.showStandings && !m.showTeam && m.season > 0 {
@@ -789,6 +797,7 @@ func (m model) openHomeSelection() (model, tea.Cmd) {
 	case 2:
 		m.favoritesOnly, m.liveOnly = true, false
 	case 3:
+		m.viewTeam = ""
 		m.showTeam = true
 		m.teamFromHome = true
 		m.teamScroll = 0

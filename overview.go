@@ -135,10 +135,34 @@ func (m model) openOverview() (model, tea.Cmd) {
 	if m.season == 0 {
 		return m, nil
 	}
-	if m.overviewSeason != m.season || m.overview == nil {
+	m = m.ensureOverview()
+	m.overviewCursor = max(1, min(overviewWeeks, m.week))
+	m.overviewScroll = m.overviewScrollFor(m.overviewCursor)
+	return m.overviewFetches(2)
+}
+
+// ensureOverview resets the week cache when the season or the favorite it
+// was summarized for changed, and places the cursor when it has none yet.
+func (m model) ensureOverview() model {
+	if m.overviewSeason != m.season || m.overviewFavorite != m.favorite || m.overview == nil {
 		m.overviewSeason = m.season
+		m.overviewFavorite = m.favorite
 		m.overview = map[int]overviewWeek{}
 	}
+	if m.overviewCursor == 0 {
+		m.overviewCursor = max(1, min(overviewWeeks, m.week))
+		m.overviewScroll = m.overviewScrollFor(m.overviewCursor)
+	}
+	return m
+}
+
+// seasonKnown runs when the first scoreboard arrives while the overview is
+// open, so its rows start loading instead of staying blank.
+func (m model) seasonKnown() (model, tea.Cmd) {
+	if !m.showOverview || m.season == 0 {
+		return m, nil
+	}
+	m = m.ensureOverview()
 	m.overviewCursor = max(1, min(overviewWeeks, m.week))
 	m.overviewScroll = m.overviewScrollFor(m.overviewCursor)
 	return m.overviewFetches(2)
@@ -150,6 +174,7 @@ func (m model) overviewFetches(reach int) (model, tea.Cmd) {
 	if m.season == 0 {
 		return m, nil
 	}
+	m = m.ensureOverview()
 	var cmds []tea.Cmd
 	for week := m.overviewCursor - reach; week <= m.overviewCursor+reach; week++ {
 		if week < 1 || week > overviewWeeks {
@@ -204,6 +229,10 @@ func (m model) overviewScrollFor(cursor int) int {
 // moveOverviewCursor moves by delta weeks, keeps the cursor visible and
 // fetches the weeks beside it.
 func (m model) moveOverviewCursor(delta int) (model, tea.Cmd) {
+	if m.season == 0 {
+		return m, nil
+	}
+	m = m.ensureOverview()
 	m.overviewCursor = max(1, min(overviewWeeks, m.overviewCursor+delta))
 	page := m.overviewPageSize()
 	if m.overviewCursor-1 < m.overviewScroll {
@@ -222,6 +251,7 @@ func (m model) updateOverviewKey(key string) (model, tea.Cmd) {
 		}
 		return m, nil
 	}
+	m = m.ensureOverview()
 	switch key {
 	case "up", "k":
 		return m.moveOverviewCursor(-1)
