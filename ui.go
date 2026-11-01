@@ -42,6 +42,9 @@ func (m model) View() string {
 	if m.showOverview {
 		return m.renderOverview(width)
 	}
+	if m.showPlayer {
+		return m.renderPlayer(width)
+	}
 	if m.showHome {
 		return m.renderHome(width)
 	}
