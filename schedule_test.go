@@ -2,11 +2,16 @@ package main
 
 import (
 	"encoding/json"
+	"fmt"
 	"io"
 	"net/http"
+	"net/url"
+	"sort"
 	"strings"
 	"testing"
 	"time"
+
+	tea "github.com/charmbracelet/bubbletea"
 )
 
 func scheduleJSON(team string) string {
@@ -273,5 +278,182 @@ func TestDashboardGroupsBySlot(t *testing.T) {
 	m.height, m.favoritesOnly = 30, true
 	if headerLines(m.View(), "MON 8:15 PM") != 0 {
 		t.Fatal("no slot headers in the favorite filter")
+	}
+}
+
+// weekBoard builds a week with GB's game first (per the given state and
+// scores) and every other team not in byes paired off on Sunday.
+func weekBoard(t *testing.T, week int, favoriteState, favoriteScore, opponentScore string, favoriteHome bool, byes ...string) scoreboard {
+	t.Helper()
+	skip := map[string]bool{}
+	for _, team := range byes {
+		skip[team] = true
+	}
+	var free []string
+	for _, team := range nflTeams {
+		if !skip[team.abbreviation] && team.abbreviation != "GB" && team.abbreviation != "DET" {
+			free = append(free, team.abbreviation)
+		}
+	}
+	game := func(id, date, state, away, awayScore, home, homeScore string) string {
+		return `{"id":"` + id + `","date":"` + date + `","status":{"type":{"state":"` + state + `"}},"competitions":[{"competitors":[{"homeAway":"away","score":"` + awayScore + `","team":{"abbreviation":"` + away + `"}},{"homeAway":"home","score":"` + homeScore + `","team":{"abbreviation":"` + home + `"}}]}]}`
+	}
+	var games []string
+	if !skip["GB"] {
+		if favoriteHome {
+			games = append(games, game("fav", "2026-11-26T17:30Z", favoriteState, "DET", opponentScore, "GB", favoriteScore))
+		} else {
+			games = append(games, game("fav", "2026-11-26T17:30Z", favoriteState, "GB", favoriteScore, "DET", opponentScore))
+		}
+	} else if !skip["DET"] {
+		free = append(free, "DET")
+	}
+	for i := 0; i+1 < len(free); i += 2 {
+		games = append(games, game(fmt.Sprint(i), "2026-11-29T18:00Z", "pre", free[i], "", free[i+1], ""))
+	}
+	var b scoreboard
+	if err := json.Unmarshal([]byte(`{"week":{"number":`+fmt.Sprint(week)+`},"events":[`+strings.Join(games, ",")+`]}`), &b); err != nil {
+		t.Fatal(err)
+	}
+	return b
+}
+
+func TestSummarizeWeekLineFormats(t *testing.T) {
+	loc, err := time.LoadLocation("America/New_York")
+	if err != nil {
+		t.Skip(err)
+	}
+	saved := time.Local
+	time.Local = loc
+	defer func() { time.Local = saved }()
+	now := time.Date(2026, 11, 24, 12, 0, 0, 0, loc)
+	line := summarizeWeek(weekBoard(t, 12, "pre", "", "", false, "KC", "NE"), "GB", 12, now).line("GB")
+	if line != "W12  15 GAMES  ·  GB @ DET  Thu 12:30 PM  ·  BYE: KC, NE" {
+		t.Fatalf("pre line: %q", line)
+	}
+	line = summarizeWeek(weekBoard(t, 11, "pre", "", "", false, "GB", "LV", "KC", "NE", "ARI", "ATL"), "GB", 11, now).line("GB")
+	if !strings.HasPrefix(line, "W11  GB BYE  ·  13 GAMES") || !strings.Contains(line, "BYE: ARI, ATL, GB, KC, LV, NE") {
+		t.Fatalf("bye line: %q", line)
+	}
+	line = summarizeWeek(weekBoard(t, 10, "post", "27", "19", true), "GB", 10, now).line("GB")
+	if !strings.Contains(line, "GB W 27-19 DET") || !strings.Contains(line, "16 GAMES") {
+		t.Fatalf("final line: %q", line)
+	}
+	line = summarizeWeek(weekBoard(t, 9, "pre", "", "", false, "ARI", "ATL", "BAL", "BUF", "CAR", "CHI", "CIN", "CLE"), "GB", 9, now).line("GB")
+	if !strings.HasSuffix(line, "BYE: ARI, ATL, BAL, BUF, CAR, CHI +2") || !strings.Contains(line, "12 GAMES") {
+		t.Fatalf("many byes: %q", line)
+	}
+	if line := (overviewWeek{Week: 15}).line("GB"); line != "W15  …" {
+		t.Fatalf("unloaded: %q", line)
+	}
+	if line := (overviewWeek{Week: 15, Err: "boom"}).line("GB"); line != "W15  unavailable · r to retry" {
+		t.Fatalf("error: %q", line)
+	}
+}
+
+func scoreboardWeeks(seen []string) []string {
+	var weeks []string
+	for _, u := range seen {
+		if strings.Contains(u, "/scoreboard") {
+			q, _ := url.ParseQuery(strings.SplitN(u, "?", 2)[1])
+			weeks = append(weeks, q.Get("week")+"/"+q.Get("seasontype"))
+		}
+	}
+	return weeks
+}
+
+func TestOverviewOpenFetchesAtMostFiveWeeks(t *testing.T) {
+	var seen []string
+	m := model{api: scheduleClient(t, &seen), season: 2026, week: 12, seasonType: 2, favorite: "GB", showHome: true, homeSelection: 7, width: 100, height: 30}
+	next, cmd := m.Update(tea.KeyMsg{Type: tea.KeyEnter})
+	m = next.(model)
+	if !m.showOverview || m.overviewCursor != 12 {
+		t.Fatalf("enter on SEASON: showOverview %v cursor %d", m.showOverview, m.overviewCursor)
+	}
+	runCmds(cmd)
+	weeks := scoreboardWeeks(seen)
+	sort.Strings(weeks)
+	if strings.Join(weeks, " ") != "10/2 11/2 12/2 13/2 14/2" {
+		t.Fatalf("open requests: %v", weeks)
+	}
+	seen = nil
+	next, cmd = m.Update(tea.KeyMsg{Type: tea.KeyDown})
+	m = next.(model)
+	runCmds(cmd)
+	if len(scoreboardWeeks(seen)) != 0 {
+		t.Fatalf("cursor on 13 must not refetch in-flight weeks: %v", scoreboardWeeks(seen))
+	}
+	next, cmd = m.Update(tea.KeyMsg{Type: tea.KeyDown})
+	m = next.(model)
+	runCmds(cmd)
+	if weeks := scoreboardWeeks(seen); strings.Join(weeks, " ") != "15/2" || m.overviewCursor != 14 {
+		t.Fatalf("cursor on 14: requests %v cursor %d", weeks, m.overviewCursor)
+	}
+}
+
+func TestOverviewEnterJumpsWeekAndEscReturns(t *testing.T) {
+	var seen []string
+	m := model{api: scheduleClient(t, &seen), season: 2026, week: 1, seasonType: 3, favorite: "GB", showHome: true, homeSelection: 7, width: 100, height: 30}
+	next, _ := m.Update(tea.KeyMsg{Type: tea.KeyEnter})
+	m = next.(model)
+	m.overviewCursor = 12
+	seen = nil
+	next, cmd := m.Update(tea.KeyMsg{Type: tea.KeyEnter})
+	m = next.(model)
+	if m.showOverview || m.week != 12 || m.seasonType != 2 || m.showHome {
+		t.Fatalf("enter: showOverview %v week %d type %d home %v", m.showOverview, m.week, m.seasonType, m.showHome)
+	}
+	msgs := runCmds(cmd)
+	if _, ok := msgs[0].(boardMsg); !ok || strings.Join(scoreboardWeeks(seen), " ") != "12/2" {
+		t.Fatalf("enter must load week 12 for the dashboard: %T %v", msgs[0], scoreboardWeeks(seen))
+	}
+	m = key(m, "esc")
+	if !m.showOverview {
+		t.Fatal("esc on the dashboard must return to the overview")
+	}
+	m = key(m, "esc")
+	if m.showOverview || !m.showHome {
+		t.Fatal("esc on the overview must return home")
+	}
+	// Opening another screen from the dashboard consumes the overview entry.
+	m.homeSelection = 7
+	m = key(key(m, "enter"), "enter")
+	m = key(m, "t")
+	if !m.showPicker {
+		t.Fatal("t on the dashboard must open the picker")
+	}
+	m = key(m, "esc")
+	if m.showOverview || m.showPicker || m.showHome {
+		t.Fatal("esc on the picker must return to the dashboard, not the overview")
+	}
+	m = key(m, "esc")
+	if !m.showHome {
+		t.Fatal("esc on the dashboard must then go home")
+	}
+}
+
+func TestOverviewBeforeSeasonKnown(t *testing.T) {
+	var seen []string
+	m := model{api: scheduleClient(t, &seen), favorite: "GB", showHome: true, homeSelection: 7, width: 80, height: 24}
+	next, cmd := m.Update(tea.KeyMsg{Type: tea.KeyEnter})
+	m = next.(model)
+	if !m.showOverview || cmd != nil || !strings.Contains(m.View(), "Loading season…") {
+		t.Fatalf("overview before the season is known: showOverview %v cmd nil %v", m.showOverview, cmd == nil)
+	}
+	m = key(m, "esc")
+	if m.showOverview || !m.showHome {
+		t.Fatal("esc must return home")
+	}
+}
+
+func TestOverviewMsgNeverTouchesBoard(t *testing.T) {
+	m := model{season: 2026, week: 9, seasonType: 2, favorite: "GB", overviewSeason: 2026, overview: map[int]overviewWeek{}, board: boardAt(t, "1", "in", "19", "20")}
+	next, _ := m.Update(overviewMsg{season: 2026, week: 9, board: boardAt(t, "1", "in", "19", "27")})
+	m = next.(model)
+	if _, home := m.board.Events[0].sides(); home.Score != "20" || len(m.feed) != 0 {
+		t.Fatalf("overview data leaked into the board: score %q feed %d", home.Score, len(m.feed))
+	}
+	if w := m.overview[9]; !w.Loaded || w.Games != 1 {
+		t.Fatalf("week 9 summary missing: %+v", w)
 	}
 }
