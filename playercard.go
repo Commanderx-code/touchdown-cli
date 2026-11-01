@@ -61,7 +61,7 @@ func (m model) openPlayer(ref playerRef) (model, tea.Cmd) {
 // openSelectedPlayer opens the card for the selected roster or injury row.
 func (m model) openSelectedPlayer() (model, tea.Cmd) {
 	page := m.activeTeamPage()
-	teamName := page.Data.Team.DisplayName
+	teamName := plainText(page.Data.Team.DisplayName)
 	if teamName == "" {
 		teamName = page.Team
 	}

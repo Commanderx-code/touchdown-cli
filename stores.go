@@ -139,7 +139,7 @@ func (m model) applyInjuries(msg injuriesMsg) model {
 	entry := m.injuryReports[msg.team]
 	entry.Loading = false
 	if msg.err != nil {
-		entry.Error = msg.err.Error()
+		entry.Error = plainText(msg.err.Error())
 	} else {
 		entry.Error, entry.Report = "", msg.report
 	}
@@ -154,7 +154,7 @@ func (m model) applyRoster(msg rosterMsg) model {
 	entry := m.rosters[msg.team]
 	entry.Loading = false
 	if msg.err != nil {
-		entry.Error = msg.err.Error()
+		entry.Error = plainText(msg.err.Error())
 	} else {
 		entry.Error, entry.Data = "", msg.data
 	}
@@ -169,7 +169,7 @@ func (m model) applyPlayer(msg playerMsg) model {
 	entry := m.players[msg.id]
 	entry.Loading = false
 	if msg.err != nil {
-		entry.Error = msg.err.Error()
+		entry.Error = plainText(msg.err.Error())
 	} else {
 		entry.Error, entry.Stats = "", msg.stats
 	}
